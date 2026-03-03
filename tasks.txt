@@ -1,0 +1,60 @@
+ Plan: Implement Wavhudi OS Phase 1 — "The Daily Habit"                                                               
+                                                        
+ Context
+
+ Building the core daily loop that transforms the Daily Planner into a Sunsama-inspired Work OS. Another agent
+ handles improvements.md rewrite and Electron/SQLite track. This agent focuses purely on feature implementation.
+
+ Implementation Tasks (in order)
+
+ Track A: Data Model Foundation
+
+ 1. Extend Task interface — Add estimated_minutes, actual_minutes, priority fields to src/lib/db.ts. Add DailyJournal
+  and UserSettings interfaces. Update seed data.
+ 2. Extend DatabaseService — Add journal CRUD, settings CRUD, rollover query (get yesterday's incomplete tasks),
+ capacity calculation helpers.
+ 3. Extend useTasks hook — Support new fields, add useJournal and useSettings hooks.
+
+ Track B: My Day View (default view)
+
+ 4. Create MyDayView component — Single-column focused today view: today's tasks in a vertical list, capacity bar,
+ calendar events sidebar. Replace week view as default.
+ 5. Create CapacityBar component — Visual bar showing planned hours vs available hours. Green/amber/red states.
+ 6. Create TimeEstimateSelector — Quick-pick buttons (15m, 30m, 1h, 2h, 4h, custom) for task duration. Used in task
+ detail and quick-add.
+ 7. Update TaskCard — Add priority left-border coloring, time estimate badge, priority icon.
+ 8. Update TaskDetailPanel — Add priority picker (row of clickable icons, Sunsama-style), time estimate selector,
+ project field placeholder.
+ 9. Update DayColumn — Show total planned time at column header.
+ 10. Update PlannerLayout — Add view toggle (My Day vs Week/Month), make My Day the default.
+
+ Track C: Daily Rituals
+
+ 11. Create PlanningRitual component — Multi-step guided morning flow: rollover review → calendar overview → backlog
+ pull-in → capacity check → optional intention journal → confirm.
+ 12. Create ShutdownRitual component — Multi-step guided evening flow: today's review → incomplete task handling
+ (push/backlog/reschedule) → optional reflection → summary.
+ 13. Auto-rollover logic — If planning ritual not completed, unfinished tasks from previous days surface
+ automatically.
+ 14. Ritual trigger logic — Detect if planning ritual was completed today. Show prompt/button if not.
+
+ Track D: Priority System
+
+ 15. Priority visual system — CSS custom properties for priority colors (urgent=red, high=orange, medium=blue,
+ low=grey). Task card left-borders, icons, sorting within day columns.
+ 16. Priority auto-sort — Tasks within a day column auto-sort by priority (urgent first) with manual drag override.
+
+ Key Files
+
+ - Modify: src/lib/db.ts, src/services/DatabaseService.ts, src/hooks/useTasks.ts,
+ src/components/planner/PlannerLayout.tsx, src/components/planner/TaskCard.tsx,
+ src/components/planner/TaskDetailPanel.tsx, src/components/planner/DayColumn.tsx, src/index.css
+ - Create: src/components/planner/MyDayView.tsx, src/components/planner/PlanningRitual.tsx,
+ src/components/planner/ShutdownRitual.tsx, src/components/planner/CapacityBar.tsx,
+ src/components/planner/TimeEstimateSelector.tsx, src/hooks/useDailyJournal.ts, src/hooks/useSettings.ts
+
+ Verification
+
+ - npm run build passes after each track
+ - npm run test passes
+ - npm run dev — verify My Day view loads as default, planning ritual triggers, shutdown ritual works, priority
