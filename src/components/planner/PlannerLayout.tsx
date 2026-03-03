@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef, useEffect, useCallback } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -11,19 +11,31 @@ import {
 } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { format, addDays, subDays, startOfMonth, endOfMonth, differenceInCalendarDays } from 'date-fns';
-import { CalendarDays, Inbox as InboxIcon, Sun } from 'lucide-react';
+import { CalendarDays, Inbox as InboxIcon, Sun, LayoutGrid, Search } from 'lucide-react';
 import { useTasks } from '@/hooks/useTasks';
+import { useDailyJournal } from '@/hooks/useDailyJournal';
+import { useSettings } from '@/hooks/useSettings';
+import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { DayColumn } from './DayColumn';
+import { MyDayView } from './MyDayView';
 import { OutlookEvents } from './OutlookEvents';
 import { BacklogList } from './BacklogList';
 import { TaskDetailPanel } from './TaskDetailPanel';
 import { AddTaskInput } from './AddTaskInput';
+import { PlanningRitual } from './PlanningRitual';
+import { ShutdownRitual } from './ShutdownRitual';
+import { CommandPalette } from './CommandPalette';
+import { KeyboardShortcutsHelp } from './KeyboardShortcutsHelp';
 import { DateRangeSelector, type RangeMode } from './DateRangeSelector';
-import type { Task } from '@/lib/db';
+import type { Task, Priority } from '@/lib/db';
+import { cn } from '@/lib/utils';
+
+type ViewMode = 'myday' | 'timeline';
 
 export function PlannerLayout() {
   const {
     loading,
+    tasks,
     createTask,
     updateTask,
     deleteTask,
@@ -31,16 +43,27 @@ export function PlannerLayout() {
     completeTask,
     getTasksForDate,
     getBacklogTasks,
+    refresh,
   } = useTasks();
 
+  const today = useMemo(() => new Date(), []);
+  const todayStr = format(today, 'yyyy-MM-dd');
+
+  const { settings } = useSettings();
+  const { journal, isPlanningDone, isShutdownDone, updateJournal } = useDailyJournal(todayStr);
+
+  const [viewMode, setViewMode] = useState<ViewMode>('myday');
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
+  const [showPlanningRitual, setShowPlanningRitual] = useState(false);
+  const [showShutdownRitual, setShowShutdownRitual] = useState(false);
+  const [showCommandPalette, setShowCommandPalette] = useState(false);
+  const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
 
   const [rangeMode, setRangeMode] = useState<RangeMode>('week');
   const [customStart, setCustomStart] = useState<Date | undefined>();
   const [customEnd, setCustomEnd] = useState<Date | undefined>();
 
-  const today = useMemo(() => new Date(), []);
   const days = useMemo(() => {
     const arr: Date[] = [];
     switch (rangeMode) {
@@ -68,7 +91,6 @@ export function PlannerLayout() {
             arr.push(addDays(customStart, i));
           }
         } else {
-          // Fallback to week view
           for (let i = -1; i < 6; i++) {
             arr.push(i < 0 ? subDays(today, Math.abs(i)) : addDays(today, i));
           }
@@ -80,6 +102,8 @@ export function PlannerLayout() {
   }, [today, rangeMode, customStart, customEnd]);
 
   const backlogTasks = getBacklogTasks();
+  const todayTasks = getTasksForDate(todayStr);
+  const capacityMinutes = settings?.daily_capacity_minutes ?? 480;
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -102,7 +126,6 @@ export function PlannerLayout() {
 
     const overId = String(over.id);
 
-    // Dropped on a day column
     if (overId.startsWith('day-')) {
       const date = overId.replace('day-', '');
       const tasksInDay = getTasksForDate(date);
@@ -110,13 +133,10 @@ export function PlannerLayout() {
       return;
     }
 
-    // Dropped on backlog
     if (overId === 'backlog') {
-      // moveTaskToBacklog handled via context
       return;
     }
 
-    // Dropped on another task — figure out the column
     if (overId.startsWith('task-')) {
       const overTask = over.data.current?.task as Task | undefined;
       if (overTask?.start_date) {
@@ -125,7 +145,7 @@ export function PlannerLayout() {
     }
   };
 
-  const handleAddBacklogTask = (title: string) => {
+  const handleAddBacklogTask = (title: string, priority?: Priority, estimated_minutes?: number | null) => {
     createTask({
       title,
       description: '',
@@ -134,9 +154,24 @@ export function PlannerLayout() {
       start_date: null,
       end_date: null,
       order_index: backlogTasks.length,
-      estimated_minutes: null,
+      estimated_minutes: estimated_minutes ?? null,
       actual_minutes: null,
-      priority: 'none',
+      priority: priority ?? 'none',
+    });
+  };
+
+  const handleAddTodayTask = (title: string, priority?: Priority, estimated_minutes?: number | null) => {
+    createTask({
+      title,
+      description: '',
+      daily_notes: [],
+      status: 'scheduled',
+      start_date: todayStr,
+      end_date: null,
+      order_index: todayTasks.length,
+      estimated_minutes: estimated_minutes ?? null,
+      actual_minutes: null,
+      priority: priority ?? 'none',
     });
   };
 
@@ -147,27 +182,73 @@ export function PlannerLayout() {
     } else {
       await completeTask(id);
     }
-    // Refresh selected task
     const updated = await import('@/services/DatabaseService').then(m => m.DatabaseService.getTaskById(id));
     if (updated) setSelectedTask(updated);
   };
 
-  // Scroll today into view
+  const handlePlanningComplete = async () => {
+    await updateJournal({ planning_completed: true });
+    setShowPlanningRitual(false);
+    await refresh();
+  };
+
+  const handleShutdownComplete = async () => {
+    await updateJournal({ shutdown_completed: true });
+    setShowShutdownRitual(false);
+    await refresh();
+  };
+
+  // Scroll today into view (timeline mode)
   const scrollRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (!loading && scrollRef.current) {
+    if (!loading && scrollRef.current && viewMode === 'timeline') {
       const todayCol = scrollRef.current.querySelector('[data-today="true"]');
       if (todayCol) {
         todayCol.scrollIntoView({ behavior: 'instant', inline: 'start', block: 'nearest' });
       }
     }
-  }, [loading]);
+  }, [loading, viewMode]);
 
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen">
         <div className="animate-pulse text-muted-foreground">Loading planner...</div>
       </div>
+    );
+  }
+
+  // Planning ritual overlay
+  if (showPlanningRitual) {
+    return (
+      <PlanningRitual
+        todayStr={todayStr}
+        tasks={tasks}
+        journal={journal}
+        onUpdateJournal={updateJournal}
+        onMoveTask={moveTaskToDate}
+        onComplete={handlePlanningComplete}
+        onClose={() => setShowPlanningRitual(false)}
+        getTasksForDate={getTasksForDate}
+      />
+    );
+  }
+
+  // Shutdown ritual overlay
+  if (showShutdownRitual) {
+    return (
+      <ShutdownRitual
+        todayStr={todayStr}
+        todayTasks={todayTasks}
+        journal={journal}
+        onUpdateJournal={updateJournal}
+        onMoveTask={moveTaskToDate}
+        onMoveToBacklog={async (id) => {
+          await import('@/services/DatabaseService').then(m => m.DatabaseService.moveTaskToBacklog(id));
+          await refresh();
+        }}
+        onComplete={handleShutdownComplete}
+        onClose={() => setShowShutdownRitual(false)}
+      />
     );
   }
 
@@ -185,6 +266,34 @@ export function PlannerLayout() {
           <div className="px-5 py-4 border-b flex items-center gap-2">
             <Sun className="h-5 w-5 text-primary" />
             <h1 className="text-base font-bold tracking-tight">Daily Planner</h1>
+          </div>
+
+          {/* View Toggle */}
+          <div className="px-4 py-3 border-b flex items-center gap-1">
+            <button
+              onClick={() => setViewMode('myday')}
+              className={cn(
+                'flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors',
+                viewMode === 'myday'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:bg-secondary'
+              )}
+            >
+              <Sun className="h-3.5 w-3.5" />
+              My Day
+            </button>
+            <button
+              onClick={() => setViewMode('timeline')}
+              className={cn(
+                'flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors',
+                viewMode === 'timeline'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:bg-secondary'
+              )}
+            >
+              <LayoutGrid className="h-3.5 w-3.5" />
+              Timeline
+            </button>
           </div>
 
           <div className="flex-1 overflow-y-auto scrollbar-thin">
@@ -220,41 +329,58 @@ export function PlannerLayout() {
           </div>
         </aside>
 
-        {/* Main Kanban Board */}
+        {/* Main Content */}
         <main className="flex-1 flex flex-col min-w-0">
-          <div className="px-6 py-4 border-b bg-card/50 flex items-center justify-between gap-4">
-            <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
-              {format(today, 'EEEE, MMMM d, yyyy')}
-            </h2>
-            <DateRangeSelector
-              mode={rangeMode}
-              onModeChange={setRangeMode}
-              customStart={customStart}
-              customEnd={customEnd}
-              onCustomRangeChange={(s, e) => {
-                setCustomStart(s);
-                setCustomEnd(e);
-              }}
-            />
-          </div>
-          <div ref={scrollRef} className="flex-1 overflow-x-auto p-4 scrollbar-thin">
-            <div className="flex gap-3 h-full">
-              {days.map((date) => {
-                const dateStr = format(date, 'yyyy-MM-dd');
-                const dayTasks = getTasksForDate(dateStr);
-                const isToday = format(today, 'yyyy-MM-dd') === dateStr;
-                return (
-                  <div key={dateStr} data-today={isToday || undefined}>
-                    <DayColumn
-                      date={date}
-                      tasks={dayTasks}
-                      onTaskClick={setSelectedTask}
-                    />
-                  </div>
-                );
-              })}
+          {viewMode === 'myday' ? (
+            <div className="flex-1 overflow-y-auto scrollbar-thin">
+              <MyDayView
+                tasks={todayTasks}
+                capacityMinutes={capacityMinutes}
+                onTaskClick={setSelectedTask}
+                onAddTask={handleAddTodayTask}
+                isPlanningDone={isPlanningDone}
+                isShutdownDone={isShutdownDone}
+                onStartPlanning={() => setShowPlanningRitual(true)}
+                onStartShutdown={() => setShowShutdownRitual(true)}
+              />
             </div>
-          </div>
+          ) : (
+            <>
+              <div className="px-6 py-4 border-b bg-card/50 flex items-center justify-between gap-4">
+                <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
+                  {format(today, 'EEEE, MMMM d, yyyy')}
+                </h2>
+                <DateRangeSelector
+                  mode={rangeMode}
+                  onModeChange={setRangeMode}
+                  customStart={customStart}
+                  customEnd={customEnd}
+                  onCustomRangeChange={(s, e) => {
+                    setCustomStart(s);
+                    setCustomEnd(e);
+                  }}
+                />
+              </div>
+              <div ref={scrollRef} className="flex-1 overflow-x-auto p-4 scrollbar-thin">
+                <div className="flex gap-3 h-full">
+                  {days.map((date) => {
+                    const dateStr = format(date, 'yyyy-MM-dd');
+                    const dayTasks = getTasksForDate(dateStr);
+                    const isTodayCol = todayStr === dateStr;
+                    return (
+                      <div key={dateStr} data-today={isTodayCol || undefined}>
+                        <DayColumn
+                          date={date}
+                          tasks={dayTasks}
+                          onTaskClick={setSelectedTask}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          )}
         </main>
 
         {/* Right Panel */}

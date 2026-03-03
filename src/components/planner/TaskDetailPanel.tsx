@@ -1,8 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
-import { X, CheckCircle2, Trash2, Calendar } from 'lucide-react';
+import { X, CheckCircle2, Trash2, Calendar, AlertTriangle, ArrowUp, Minus, ArrowDown, Circle } from 'lucide-react';
 import { format, addDays, differenceInCalendarDays, parse } from 'date-fns';
-import type { Task, DailyNote } from '@/lib/db';
+import type { Task, DailyNote, Priority } from '@/lib/db';
 import { cn } from '@/lib/utils';
+import { TimeEstimateSelector } from './TimeEstimateSelector';
+import { PRIORITY_LABELS } from '@/lib/priority';
 
 interface TaskDetailPanelProps {
   task: Task | null;
@@ -133,6 +135,43 @@ export function TaskDetailPanel({ task, onClose, onUpdate, onComplete, onDelete 
             {task.status.charAt(0).toUpperCase() + task.status.slice(1)}
           </span>
         </div>
+
+        {/* Priority picker */}
+        <div>
+          <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2 block">
+            Priority
+          </label>
+          <div className="flex items-center gap-1.5">
+            {([
+              { p: 'urgent' as Priority, icon: AlertTriangle, color: 'text-priority-urgent' },
+              { p: 'high' as Priority, icon: ArrowUp, color: 'text-priority-high' },
+              { p: 'medium' as Priority, icon: Minus, color: 'text-priority-medium' },
+              { p: 'low' as Priority, icon: ArrowDown, color: 'text-priority-low' },
+              { p: 'none' as Priority, icon: Circle, color: 'text-priority-none' },
+            ]).map(({ p, icon: Icon, color }) => (
+              <button
+                key={p}
+                onClick={() => onUpdate(task.id!, { priority: p })}
+                className={cn(
+                  'flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors',
+                  task.priority === p
+                    ? 'bg-secondary ring-1 ring-primary/30'
+                    : 'hover:bg-secondary/60'
+                )}
+                title={PRIORITY_LABELS[p]}
+              >
+                <Icon className={cn('h-3.5 w-3.5', color)} />
+                <span className="hidden sm:inline">{PRIORITY_LABELS[p]}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Time estimate */}
+        <TimeEstimateSelector
+          value={task.estimated_minutes}
+          onChange={(minutes) => onUpdate(task.id!, { estimated_minutes: minutes })}
+        />
 
         {/* Notes section */}
         {isMultiDay ? (

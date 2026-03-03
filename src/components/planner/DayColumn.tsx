@@ -1,8 +1,10 @@
+import { useMemo } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { format, isToday, isYesterday, isTomorrow } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { TaskCard } from './TaskCard';
+import { sortByPriority, formatMinutes } from '@/lib/priority';
 import type { Task } from '@/lib/db';
 
 interface DayColumnProps {
@@ -27,7 +29,12 @@ export function DayColumn({ date, tasks, onTaskClick }: DayColumnProps) {
     data: { date: dateStr },
   });
 
-  const taskIds = tasks.map((t) => `task-${t.id}`);
+  const sortedTasks = useMemo(() => sortByPriority(tasks), [tasks]);
+  const taskIds = sortedTasks.map((t) => `task-${t.id}`);
+  const plannedMinutes = tasks
+    .filter(t => t.status !== 'completed')
+    .reduce((sum, t) => sum + (t.estimated_minutes || 0), 0);
+  const plannedStr = formatMinutes(plannedMinutes);
 
   return (
     <div
@@ -47,9 +54,16 @@ export function DayColumn({ date, tasks, onTaskClick }: DayColumnProps) {
         )}>
           {getDayLabel(date)}
         </h3>
-        <p className="text-xs text-muted-foreground mt-0.5">
-          {format(date, 'MMM d')}
-        </p>
+        <div className="flex items-center gap-2 mt-0.5">
+          <p className="text-xs text-muted-foreground">
+            {format(date, 'MMM d')}
+          </p>
+          {plannedStr && (
+            <span className="text-[10px] font-medium text-muted-foreground/70 bg-secondary/50 px-1.5 py-0.5 rounded">
+              {plannedStr}
+            </span>
+          )}
+        </div>
       </div>
 
       <div
@@ -57,7 +71,7 @@ export function DayColumn({ date, tasks, onTaskClick }: DayColumnProps) {
         className="flex-1 p-2 space-y-2 min-h-[200px] scrollbar-thin overflow-y-auto"
       >
         <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
-          {tasks.map((task) => (
+          {sortedTasks.map((task) => (
             <TaskCard
               key={task.id}
               task={task}

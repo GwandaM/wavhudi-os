@@ -1,0 +1,64 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+dist-electron/
+out/
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Editor & IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# OS files
+.DS_Store
+Desktop.ini
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Testing
+coverage/
+
+# TypeScript
+*.tsbuildinfo
+
+# Electron
+release/
+
+# SQLite database (local data — never commit)
+*.db
+*.db-journal
+*.db-wal
+*.sqlite
+*.sqlite3
+
+# Local planner data
+planner.db
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Agent / AI tool files
+.gemini/
+.codex/
+.claude/
+.agent/
+.agents/

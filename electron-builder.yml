@@ -1,0 +1,14 @@
+appId: com.wavhudi.os
+productName: Wavhudi OS
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/**/*
+  - dist-electron/**/*
+win:
+  target: nsis
+mac:
+  target: dmg
+linux:
+  target: AppImage

@@ -8,13 +8,13 @@ import { sortByPriority, formatMinutes } from '@/lib/priority';
 import { TaskCard } from './TaskCard';
 import { CapacityBar } from './CapacityBar';
 import { AddTaskInput } from './AddTaskInput';
-import type { Task } from '@/lib/db';
+import type { Task, Priority } from '@/lib/db';
 
 interface MyDayViewProps {
   tasks: Task[];
   capacityMinutes: number;
   onTaskClick: (task: Task) => void;
-  onAddTask: (title: string) => void;
+  onAddTask: (title: string, priority?: Priority, estimated_minutes?: number | null) => void;
   isPlanningDone: boolean;
   isShutdownDone: boolean;
   onStartPlanning: () => void;
