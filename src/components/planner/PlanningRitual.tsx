@@ -36,7 +36,10 @@ export function PlanningRitual({
   const [selectedRollovers, setSelectedRollovers] = useState<Set<number>>(new Set());
 
   useEffect(() => {
-    DatabaseService.getIncompleteTasksBefore(todayStr).then(setRolloverTasks);
+    // Generate any recurring tasks for today before showing rollover
+    DatabaseService.generateRecurringTasks(todayStr).then(() => {
+      DatabaseService.getIncompleteTasksBefore(todayStr).then(setRolloverTasks);
+    });
   }, [todayStr]);
 
   const stepIndex = STEPS.indexOf(step);

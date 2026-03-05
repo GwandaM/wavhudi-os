@@ -1,6 +1,6 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, Inbox } from 'lucide-react';
+import { Inbox } from 'lucide-react';
 import type { Task } from '@/lib/db';
 import { cn } from '@/lib/utils';
 
@@ -26,22 +26,17 @@ function BacklogItem({ task, onClick }: { task: Task; onClick: (t: Task) => void
     <div
       ref={setNodeRef}
       style={style}
+      {...attributes}
+      {...listeners}
       className={cn(
-        'group flex items-center gap-2 rounded-lg border bg-card px-3 py-2.5 cursor-pointer transition-all',
-        'hover:shadow-sm hover:border-primary/20',
-        isDragging && 'opacity-50 shadow-lg'
+        'group flex items-center gap-2 rounded-lg px-3 py-2 cursor-pointer transition-all duration-200',
+        'hover:bg-muted/50',
+        isDragging && 'opacity-50 shadow-lg ring-2 ring-primary/20 rotate-[0.5deg]'
       )}
       onClick={() => onClick(task)}
     >
-      <button
-        {...attributes}
-        {...listeners}
-        className="shrink-0 cursor-grab opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <GripVertical className="h-4 w-4" />
-      </button>
-      <p className="text-sm truncate flex-1">{task.title}</p>
+      <span className="h-3.5 w-3.5 shrink-0 rounded-full border-[1.5px] border-muted-foreground/40" />
+      <p className="text-sm truncate flex-1 leading-snug">{task.title}</p>
     </div>
   );
 }
@@ -53,10 +48,10 @@ interface BacklogListProps {
 
 export function BacklogList({ tasks, onTaskClick }: BacklogListProps) {
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-0.5">
       {tasks.length === 0 && (
         <div className="flex flex-col items-center justify-center py-8 text-muted-foreground/50">
-          <Inbox className="h-6 w-6 mb-2" />
+          <Inbox className="h-5 w-5 mb-1.5" />
           <p className="text-xs">No backlog tasks</p>
         </div>
       )}

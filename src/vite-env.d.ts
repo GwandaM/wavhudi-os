@@ -3,6 +3,7 @@
 import type {
   PlannerDbBridge,
   PlannerJournalBridge,
+  PlannerProjectBridge,
   PlannerSettingsBridge,
 } from '@/lib/db';
 
@@ -11,6 +12,7 @@ declare global {
     wavhudiDb?: PlannerDbBridge;
     wavhudiJournalDb?: PlannerJournalBridge;
     wavhudiSettingsDb?: PlannerSettingsBridge;
+    wavhudiProjectDb?: PlannerProjectBridge;
   }
 }
 

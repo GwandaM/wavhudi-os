@@ -13,7 +13,10 @@ export function useTasks() {
   }, []);
 
   useEffect(() => {
-    DatabaseService.seedIfEmpty().then(refresh);
+    const today = new Date().toISOString().split('T')[0];
+    DatabaseService.seedIfEmpty()
+      .then(() => DatabaseService.generateRecurringTasks(today))
+      .then(refresh);
   }, [refresh]);
 
   const createTask = useCallback(async (task: Omit<Task, 'id' | 'created_at'>) => {

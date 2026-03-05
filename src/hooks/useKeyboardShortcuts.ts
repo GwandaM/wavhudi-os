@@ -5,6 +5,7 @@ interface ShortcutHandlers {
   onNewTask: () => void;
   onSwitchMyDay: () => void;
   onSwitchTimeline: () => void;
+  onSwitchReview: () => void;
   onEscape: () => void;
   onShowShortcuts: () => void;
 }
@@ -47,6 +48,13 @@ export function useKeyboardShortcuts(handlers: ShortcutHandlers) {
         return;
       }
 
+      // Cmd+3 — Review
+      if (meta && e.key === '3') {
+        e.preventDefault();
+        handlers.onSwitchReview();
+        return;
+      }
+
       // Escape — Close panels
       if (e.key === 'Escape') {
         handlers.onEscape();
@@ -70,6 +78,7 @@ export const SHORTCUTS = [
   { keys: '⌘N', label: 'New task' },
   { keys: '⌘1', label: 'Switch to My Day' },
   { keys: '⌘2', label: 'Switch to Timeline' },
+  { keys: '⌘3', label: 'Switch to Review' },
   { keys: 'Esc', label: 'Close panel / dialog' },
   { keys: '?', label: 'Show keyboard shortcuts' },
 ];

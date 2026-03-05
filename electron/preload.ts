@@ -1,4 +1,49 @@
 import { contextBridge, ipcRenderer } from "electron";
+import type {
+  DailyJournal,
+  PlannerDbBridge,
+  PlannerJournalBridge,
+  PlannerProjectBridge,
+  PlannerSettingsBridge,
+  Project,
+  Task,
+  UserSettings,
+} from "../src/lib/db";
+
+const wavhudiDb: PlannerDbBridge = {
+  getAll: () => ipcRenderer.invoke("db:tasks:getAll"),
+  get: (id: number) => ipcRenderer.invoke("db:tasks:get", id),
+  add: (task: Omit<Task, "id">) => ipcRenderer.invoke("db:tasks:add", task),
+  update: (id: number, changes: Partial<Task>) =>
+    ipcRenderer.invoke("db:tasks:update", id, changes),
+  delete: (id: number) => ipcRenderer.invoke("db:tasks:delete", id),
+  count: () => ipcRenderer.invoke("db:tasks:count"),
+};
+
+const wavhudiJournalDb: PlannerJournalBridge = {
+  getAll: () => ipcRenderer.invoke("db:journal:getAll"),
+  getByDate: (date: string) => ipcRenderer.invoke("db:journal:getByDate", date),
+  upsert: (
+    date: string,
+    changes: Partial<Omit<DailyJournal, "id" | "date" | "created_at">>
+  ) => ipcRenderer.invoke("db:journal:upsert", date, changes),
+};
+
+const wavhudiSettingsDb: PlannerSettingsBridge = {
+  get: () => ipcRenderer.invoke("db:settings:get"),
+  update: (changes: Partial<UserSettings>) =>
+    ipcRenderer.invoke("db:settings:update", changes),
+};
+
+const wavhudiProjectDb: PlannerProjectBridge = {
+  getAll: () => ipcRenderer.invoke("db:projects:getAll"),
+  get: (id: number) => ipcRenderer.invoke("db:projects:get", id),
+  add: (project: Omit<Project, "id" | "created_at">) =>
+    ipcRenderer.invoke("db:projects:add", project),
+  update: (id: number, changes: Partial<Project>) =>
+    ipcRenderer.invoke("db:projects:update", id, changes),
+  delete: (id: number) => ipcRenderer.invoke("db:projects:delete", id),
+};
 
 contextBridge.exposeInMainWorld("electronAPI", {
   platform: process.platform,
@@ -17,15 +62,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
     };
   },
 
-  // ── Database IPC stub ───────────────────────────────────────────
-  // The SQLite agent will wire these up. Until then they are no-ops
-  // that let the renderer code compile without errors.
-  // db: {
-  //   getAll:  (store: string) => ipcRenderer.invoke('db:getAll', store),
-  //   get:     (store: string, id: number) => ipcRenderer.invoke('db:get', store, id),
-  //   add:     (store: string, data: unknown) => ipcRenderer.invoke('db:add', store, data),
-  //   update:  (store: string, id: number, changes: unknown) => ipcRenderer.invoke('db:update', store, id, changes),
-  //   delete:  (store: string, id: number) => ipcRenderer.invoke('db:delete', store, id),
-  //   count:   (store: string) => ipcRenderer.invoke('db:count', store),
-  // },
 });
+
+contextBridge.exposeInMainWorld("wavhudiDb", wavhudiDb);
+contextBridge.exposeInMainWorld("wavhudiJournalDb", wavhudiJournalDb);
+contextBridge.exposeInMainWorld("wavhudiSettingsDb", wavhudiSettingsDb);
+contextBridge.exposeInMainWorld("wavhudiProjectDb", wavhudiProjectDb);

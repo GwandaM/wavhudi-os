@@ -8,7 +8,7 @@ import { sortByPriority, formatMinutes } from '@/lib/priority';
 import { TaskCard } from './TaskCard';
 import { CapacityBar } from './CapacityBar';
 import { AddTaskInput } from './AddTaskInput';
-import type { Task, Priority } from '@/lib/db';
+import type { Task, Priority, Project } from '@/lib/db';
 
 interface MyDayViewProps {
   tasks: Task[];
@@ -19,6 +19,7 @@ interface MyDayViewProps {
   isShutdownDone: boolean;
   onStartPlanning: () => void;
   onStartShutdown: () => void;
+  projects?: Project[];
 }
 
 export function MyDayView({
@@ -30,6 +31,7 @@ export function MyDayView({
   isShutdownDone,
   onStartPlanning,
   onStartShutdown,
+  projects,
 }: MyDayViewProps) {
   const today = useMemo(() => new Date(), []);
   const dateStr = format(today, 'yyyy-MM-dd');
@@ -56,8 +58,8 @@ export function MyDayView({
       {/* Header */}
       <div className="space-y-1">
         <div className="flex items-center gap-2">
-          <Sun className="h-5 w-5 text-primary" />
-          <h1 className="text-xl font-bold">My Day</h1>
+          <Sun className="h-4 w-4 text-primary" />
+          <h1 className="text-lg font-semibold">My Day</h1>
         </div>
         <p className="text-sm text-muted-foreground">
           {format(today, 'EEEE, MMMM d, yyyy')}
@@ -112,6 +114,7 @@ export function MyDayView({
               task={task}
               onClick={onTaskClick}
               isMultiDay={!!task.end_date && task.end_date !== task.start_date}
+              projects={projects}
             />
           ))}
         </SortableContext>
@@ -140,6 +143,7 @@ export function MyDayView({
               task={task}
               onClick={onTaskClick}
               isMultiDay={!!task.end_date && task.end_date !== task.start_date}
+              projects={projects}
             />
           ))}
         </div>

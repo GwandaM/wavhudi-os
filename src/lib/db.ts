@@ -9,11 +9,34 @@ export interface DailyNote {
 
 export type Priority = 'urgent' | 'high' | 'medium' | 'low' | 'none';
 
+export interface Subtask {
+  id: number;
+  title: string;
+  completed: boolean;
+  order_index: number;
+}
+
+export interface Project {
+  id: number;
+  name: string;
+  color: string;
+  icon?: string;
+  description?: string;
+  is_archived: boolean;
+  order_index: number;
+  created_at: string;
+}
+
+export interface RecurrenceRule {
+  frequency: 'daily' | 'weekdays' | 'weekly' | 'biweekly' | 'monthly';
+  end_date?: string;
+}
+
 export interface Task {
   id: number;
   title: string;
   description: string;
-  daily_notes: DailyNote[]; // Per-day notes for multi-day tasks
+  daily_notes: DailyNote[];
   status: 'backlog' | 'scheduled' | 'completed';
   start_date: string | null;
   end_date: string | null;
@@ -22,6 +45,12 @@ export interface Task {
   estimated_minutes: number | null;
   actual_minutes: number | null;
   priority: Priority;
+  project_id: number | null;
+  is_pinned: boolean;
+  subtasks: Subtask[];
+  tags: string[];
+  recurrence_rule: RecurrenceRule | null;
+  recurrence_parent_id: number | null;
 }
 
 export interface DailyJournal {
@@ -64,11 +93,21 @@ export interface PlannerSettingsBridge {
   update(changes: Partial<UserSettings>): Promise<UserSettings>;
 }
 
+export interface PlannerProjectBridge {
+  getAll(): Promise<Project[]>;
+  get(id: number): Promise<Project | undefined>;
+  add(project: Omit<Project, 'id' | 'created_at'>): Promise<number>;
+  update(id: number, changes: Partial<Project>): Promise<void>;
+  delete(id: number): Promise<void>;
+}
+
 const STORAGE_KEY = 'daily_planner_tasks';
 const JOURNAL_STORAGE_KEY = 'daily_planner_journals';
 const SETTINGS_STORAGE_KEY = 'daily_planner_settings';
+const PROJECTS_STORAGE_KEY = 'daily_planner_projects';
 let nextId = 1;
 let nextJournalId = 1;
+let nextProjectId = 1;
 
 function getStorage(): Storage | null {
   if (typeof window === 'undefined') return null;
@@ -289,5 +328,87 @@ export const settingsDb: PlannerSettingsBridge = {
   },
   async update(changes: Partial<UserSettings>) {
     return getSettingsDb().update(changes);
+  },
+};
+
+// --- Projects Storage ---
+function loadProjectsFromStorage(): Project[] {
+  const storage = getStorage();
+  if (!storage) return [];
+  try {
+    const raw = storage.getItem(PROJECTS_STORAGE_KEY);
+    if (raw) {
+      const projects: Project[] = JSON.parse(raw);
+      if (projects.length > 0) {
+        nextProjectId = Math.max(...projects.map(p => p.id)) + 1;
+      }
+      return projects;
+    }
+  } catch {
+    // ignore
+  }
+  return [];
+}
+
+function saveProjectsToStorage(projects: Project[]): void {
+  const storage = getStorage();
+  if (!storage) return;
+  storage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(projects));
+}
+
+const localStorageProjectDb: PlannerProjectBridge = {
+  async getAll(): Promise<Project[]> {
+    return loadProjectsFromStorage().sort((a, b) => a.order_index - b.order_index);
+  },
+
+  async get(id: number): Promise<Project | undefined> {
+    return loadProjectsFromStorage().find(p => p.id === id);
+  },
+
+  async add(project: Omit<Project, 'id' | 'created_at'>): Promise<number> {
+    const projects = loadProjectsFromStorage();
+    const id = nextProjectId++;
+    projects.push({ ...project, id, created_at: new Date().toISOString() });
+    saveProjectsToStorage(projects);
+    return id;
+  },
+
+  async update(id: number, changes: Partial<Project>): Promise<void> {
+    const projects = loadProjectsFromStorage();
+    const idx = projects.findIndex(p => p.id === id);
+    if (idx !== -1) {
+      projects[idx] = { ...projects[idx], ...changes };
+      saveProjectsToStorage(projects);
+    }
+  },
+
+  async delete(id: number): Promise<void> {
+    const projects = loadProjectsFromStorage().filter(p => p.id !== id);
+    saveProjectsToStorage(projects);
+  },
+};
+
+function getProjectDb(): PlannerProjectBridge {
+  if (typeof window !== 'undefined' && window.wavhudiProjectDb) {
+    return window.wavhudiProjectDb;
+  }
+  return localStorageProjectDb;
+}
+
+export const projectDb: PlannerProjectBridge = {
+  async getAll() {
+    return getProjectDb().getAll();
+  },
+  async get(id: number) {
+    return getProjectDb().get(id);
+  },
+  async add(project: Omit<Project, 'id' | 'created_at'>) {
+    return getProjectDb().add(project);
+  },
+  async update(id: number, changes: Partial<Project>) {
+    return getProjectDb().update(id, changes);
+  },
+  async delete(id: number) {
+    return getProjectDb().delete(id);
   },
 };

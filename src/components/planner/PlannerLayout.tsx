@@ -11,8 +11,9 @@ import {
 } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { format, addDays, subDays, startOfMonth, endOfMonth, differenceInCalendarDays } from 'date-fns';
-import { CalendarDays, Inbox as InboxIcon, Sun, LayoutGrid, Search } from 'lucide-react';
+import { CalendarDays, Inbox as InboxIcon, Sun, LayoutGrid, Search, FolderOpen, Plus, MoreHorizontal, BarChart3 } from 'lucide-react';
 import { useTasks } from '@/hooks/useTasks';
+import { useProjects } from '@/hooks/useProjects';
 import { useDailyJournal } from '@/hooks/useDailyJournal';
 import { useSettings } from '@/hooks/useSettings';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
@@ -26,11 +27,12 @@ import { PlanningRitual } from './PlanningRitual';
 import { ShutdownRitual } from './ShutdownRitual';
 import { CommandPalette } from './CommandPalette';
 import { KeyboardShortcutsHelp } from './KeyboardShortcutsHelp';
+import { WeeklyReview } from './WeeklyReview';
 import { DateRangeSelector, type RangeMode } from './DateRangeSelector';
-import type { Task, Priority } from '@/lib/db';
+import type { Task, Priority, Project } from '@/lib/db';
 import { cn } from '@/lib/utils';
 
-type ViewMode = 'myday' | 'timeline';
+type ViewMode = 'myday' | 'timeline' | 'review';
 
 export function PlannerLayout() {
   const {
@@ -45,6 +47,8 @@ export function PlannerLayout() {
     getBacklogTasks,
     refresh,
   } = useTasks();
+
+  const { projects, createProject, updateProject, deleteProject, getProjectById } = useProjects();
 
   const today = useMemo(() => new Date(), []);
   const todayStr = format(today, 'yyyy-MM-dd');
@@ -63,6 +67,9 @@ export function PlannerLayout() {
   const [rangeMode, setRangeMode] = useState<RangeMode>('week');
   const [customStart, setCustomStart] = useState<Date | undefined>();
   const [customEnd, setCustomEnd] = useState<Date | undefined>();
+  const [showNewProject, setShowNewProject] = useState(false);
+  const [newProjectName, setNewProjectName] = useState('');
+  const [filterProjectId, setFilterProjectId] = useState<number | null>(null);
 
   const days = useMemo(() => {
     const arr: Date[] = [];
@@ -145,32 +152,40 @@ export function PlannerLayout() {
     }
   };
 
+  const newTaskDefaults = {
+    description: '',
+    daily_notes: [],
+    actual_minutes: null,
+    project_id: null,
+    is_pinned: false,
+    subtasks: [],
+    tags: [] as string[],
+    recurrence_rule: null,
+    recurrence_parent_id: null,
+  };
+
   const handleAddBacklogTask = (title: string, priority?: Priority, estimated_minutes?: number | null) => {
     createTask({
+      ...newTaskDefaults,
       title,
-      description: '',
-      daily_notes: [],
       status: 'backlog',
       start_date: null,
       end_date: null,
       order_index: backlogTasks.length,
       estimated_minutes: estimated_minutes ?? null,
-      actual_minutes: null,
       priority: priority ?? 'none',
     });
   };
 
   const handleAddTodayTask = (title: string, priority?: Priority, estimated_minutes?: number | null) => {
     createTask({
+      ...newTaskDefaults,
       title,
-      description: '',
-      daily_notes: [],
       status: 'scheduled',
       start_date: todayStr,
       end_date: null,
       order_index: todayTasks.length,
       estimated_minutes: estimated_minutes ?? null,
-      actual_minutes: null,
       priority: priority ?? 'none',
     });
   };
@@ -197,6 +212,21 @@ export function PlannerLayout() {
     setShowShutdownRitual(false);
     await refresh();
   };
+
+  // Keyboard shortcuts
+  useKeyboardShortcuts(useMemo(() => ({
+    onCommandPalette: () => setShowCommandPalette(prev => !prev),
+    onNewTask: () => setShowCommandPalette(true),
+    onSwitchMyDay: () => setViewMode('myday'),
+    onSwitchTimeline: () => setViewMode('timeline'),
+    onSwitchReview: () => setViewMode('review'),
+    onEscape: () => {
+      if (showCommandPalette) setShowCommandPalette(false);
+      else if (showShortcutsHelp) setShowShortcutsHelp(false);
+      else if (selectedTask) setSelectedTask(null);
+    },
+    onShowShortcuts: () => setShowShortcutsHelp(prev => !prev),
+  }), [showCommandPalette, showShortcutsHelp, selectedTask]));
 
   // Scroll today into view (timeline mode)
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -261,15 +291,22 @@ export function PlannerLayout() {
     >
       <div className="flex h-screen overflow-hidden">
         {/* Left Sidebar */}
-        <aside className="w-[var(--sidebar-width)] shrink-0 border-r bg-sidebar flex flex-col">
+        <aside className="w-60 shrink-0 border-r border-border/40 bg-background/50 flex flex-col">
           {/* Header */}
-          <div className="px-5 py-4 border-b flex items-center gap-2">
-            <Sun className="h-5 w-5 text-primary" />
-            <h1 className="text-base font-bold tracking-tight">Daily Planner</h1>
+          <div className="px-3 py-2 border-b border-border/40 flex items-center gap-2">
+            <Sun className="h-4 w-4 text-primary" />
+            <h1 className="text-[13px] font-semibold flex-1">Daily Planner</h1>
+            <button
+              onClick={() => setShowCommandPalette(true)}
+              className="px-2 py-1 rounded border border-border/40 bg-muted/30 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              title="Search (⌘K)"
+            >
+              <Search className="h-3.5 w-3.5" />
+            </button>
           </div>
 
           {/* View Toggle */}
-          <div className="px-4 py-3 border-b flex items-center gap-1">
+          <div className="px-3 py-2 border-b border-border/40 flex items-center gap-1">
             <button
               onClick={() => setViewMode('myday')}
               className={cn(
@@ -294,11 +331,23 @@ export function PlannerLayout() {
               <LayoutGrid className="h-3.5 w-3.5" />
               Timeline
             </button>
+            <button
+              onClick={() => setViewMode('review')}
+              className={cn(
+                'flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors',
+                viewMode === 'review'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:bg-secondary'
+              )}
+            >
+              <BarChart3 className="h-3.5 w-3.5" />
+              Review
+            </button>
           </div>
 
           <div className="flex-1 overflow-y-auto scrollbar-thin">
             {/* Outlook Events */}
-            <div className="p-4">
+            <div className="p-3">
               <div className="flex items-center gap-2 mb-3">
                 <CalendarDays className="h-4 w-4 text-muted-foreground" />
                 <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
@@ -308,13 +357,94 @@ export function PlannerLayout() {
               <OutlookEvents />
             </div>
 
-            {/* Backlog */}
-            <div className="p-4 border-t">
+            {/* Projects */}
+            <div className="p-3 border-t border-border/40">
               <div className="flex items-center gap-2 mb-3">
-                <InboxIcon className="h-4 w-4 text-muted-foreground" />
-                <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                <FolderOpen className="h-4 w-4 text-muted-foreground" />
+                <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex-1">
+                  Projects
+                </h2>
+                <button
+                  onClick={() => setShowNewProject(true)}
+                  className="rounded p-0.5 hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground"
+                  title="New project"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                </button>
+              </div>
+              <div className="space-y-0.5">
+                <button
+                  onClick={() => setFilterProjectId(null)}
+                  className={cn(
+                    'w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs transition-colors',
+                    filterProjectId === null
+                      ? 'bg-secondary font-medium'
+                      : 'hover:bg-secondary/60 text-muted-foreground'
+                  )}
+                >
+                  All tasks
+                </button>
+                {projects.map((project) => (
+                  <button
+                    key={project.id}
+                    onClick={() => setFilterProjectId(
+                      filterProjectId === project.id ? null : project.id
+                    )}
+                    className={cn(
+                      'w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs transition-colors',
+                      filterProjectId === project.id
+                        ? 'bg-secondary font-medium'
+                        : 'hover:bg-secondary/60 text-muted-foreground'
+                    )}
+                  >
+                    <span
+                      className="h-2.5 w-2.5 rounded-full shrink-0"
+                      style={{ backgroundColor: project.color }}
+                    />
+                    <span className="truncate flex-1 text-left">{project.name}</span>
+                  </button>
+                ))}
+              </div>
+              {showNewProject && (
+                <form
+                  className="mt-2"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (!newProjectName.trim()) return;
+                    const colors = ['#6366f1', '#f59e0b', '#10b981', '#ef4444', '#8b5cf6', '#ec4899'];
+                    createProject({
+                      name: newProjectName.trim(),
+                      color: colors[projects.length % colors.length],
+                      description: '',
+                      is_archived: false,
+                      order_index: projects.length,
+                    });
+                    setNewProjectName('');
+                    setShowNewProject(false);
+                  }}
+                >
+                  <input
+                    autoFocus
+                    value={newProjectName}
+                    onChange={(e) => setNewProjectName(e.target.value)}
+                    onBlur={() => {
+                      if (!newProjectName.trim()) setShowNewProject(false);
+                    }}
+                    placeholder="Project name..."
+                    className="w-full text-xs rounded border bg-card px-2 py-1.5 outline-none focus:border-primary/30"
+                  />
+                </form>
+              )}
+            </div>
+
+            {/* Backlog */}
+            <div className="p-3 border-t border-border/40">
+              <div className="flex items-center gap-2 mb-2">
+                <InboxIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                <h2 className="text-[13px] font-medium flex-1">
                   Task Backlog
                 </h2>
+                <span className="text-[11px] text-muted-foreground">{backlogTasks.length}</span>
               </div>
               <SortableContext
                 items={backlogTasks.map((t) => `task-${t.id}`)}
@@ -342,11 +472,19 @@ export function PlannerLayout() {
                 isShutdownDone={isShutdownDone}
                 onStartPlanning={() => setShowPlanningRitual(true)}
                 onStartShutdown={() => setShowShutdownRitual(true)}
+                projects={projects}
+              />
+            </div>
+          ) : viewMode === 'review' ? (
+            <div className="flex-1 overflow-y-auto scrollbar-thin">
+              <WeeklyReview
+                projects={projects}
+                onClose={() => setViewMode('myday')}
               />
             </div>
           ) : (
             <>
-              <div className="px-6 py-4 border-b bg-card/50 flex items-center justify-between gap-4">
+              <div className="border-b px-3 py-2 flex items-center justify-between gap-4">
                 <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
                   {format(today, 'EEEE, MMMM d, yyyy')}
                 </h2>
@@ -361,8 +499,8 @@ export function PlannerLayout() {
                   }}
                 />
               </div>
-              <div ref={scrollRef} className="flex-1 overflow-x-auto p-4 scrollbar-thin">
-                <div className="flex gap-3 h-full">
+              <div ref={scrollRef} className="flex-1 overflow-x-auto scrollbar-thin">
+                <div className="flex h-full">
                   {days.map((date) => {
                     const dateStr = format(date, 'yyyy-MM-dd');
                     const dayTasks = getTasksForDate(dateStr);
@@ -373,6 +511,19 @@ export function PlannerLayout() {
                           date={date}
                           tasks={dayTasks}
                           onTaskClick={setSelectedTask}
+                          projects={projects}
+                          onAddTask={(title, dateStr, priority, estimated_minutes) => {
+                            createTask({
+                              ...newTaskDefaults,
+                              title,
+                              status: 'scheduled',
+                              start_date: dateStr,
+                              end_date: null,
+                              order_index: dayTasks.length,
+                              estimated_minutes: estimated_minutes ?? null,
+                              priority: priority ?? 'none',
+                            });
+                          }}
                         />
                       </div>
                     );
@@ -387,6 +538,7 @@ export function PlannerLayout() {
         {selectedTask && (
           <TaskDetailPanel
             task={selectedTask}
+            projects={projects}
             onClose={() => setSelectedTask(null)}
             onUpdate={async (id, changes) => {
               await updateTask(id, changes);
@@ -401,11 +553,34 @@ export function PlannerLayout() {
 
       <DragOverlay>
         {activeTask && (
-          <div className="rounded-lg border bg-card p-3 shadow-xl rotate-2 opacity-90 w-[250px]">
-            <p className="text-sm font-medium">{activeTask.title}</p>
+          <div className="rounded-lg border border-border/40 bg-card px-3 py-2.5 shadow-xl ring-2 ring-primary/20 rotate-[0.5deg] w-[250px]">
+            <p className="text-sm leading-snug">{activeTask.title}</p>
           </div>
         )}
       </DragOverlay>
+
+      {/* Command Palette */}
+      <CommandPalette
+        open={showCommandPalette}
+        onOpenChange={setShowCommandPalette}
+        tasks={tasks}
+        onTaskClick={setSelectedTask}
+        onCreateTask={() => {
+          // Focus the backlog add input as a fallback
+          const input = document.querySelector<HTMLInputElement>('[placeholder*="backlog"]');
+          if (input) input.focus();
+        }}
+        onSwitchView={setViewMode}
+        onStartPlanning={() => setShowPlanningRitual(true)}
+        onStartShutdown={() => setShowShutdownRitual(true)}
+        onShowShortcuts={() => setShowShortcutsHelp(true)}
+      />
+
+      {/* Keyboard Shortcuts Help */}
+      <KeyboardShortcutsHelp
+        open={showShortcutsHelp}
+        onClose={() => setShowShortcutsHelp(false)}
+      />
     </DndContext>
   );
 }

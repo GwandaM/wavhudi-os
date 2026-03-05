@@ -18,6 +18,10 @@ export const PRIORITY_LABELS: Record<Priority, string> = {
 
 export function sortByPriority(tasks: Task[]): Task[] {
   return [...tasks].sort((a, b) => {
+    // Pinned tasks float to the top
+    const pinA = a.is_pinned ? 0 : 1;
+    const pinB = b.is_pinned ? 0 : 1;
+    if (pinA !== pinB) return pinA - pinB;
     const pa = PRIORITY_WEIGHT[a.priority || 'none'];
     const pb = PRIORITY_WEIGHT[b.priority || 'none'];
     if (pa !== pb) return pa - pb;

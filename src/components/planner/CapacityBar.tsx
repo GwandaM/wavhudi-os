@@ -27,7 +27,7 @@ export function CapacityBar({ plannedMinutes, capacityMinutes, className }: Capa
           {formatMinutes(capacityMinutes - plannedMinutes)} {ratio <= 1 ? 'remaining' : 'over'}
         </span>
       </div>
-      <div className="h-2 rounded-full bg-secondary overflow-hidden">
+      <div className="h-1.5 rounded-full bg-muted overflow-hidden">
         <div
           className={cn(
             'h-full rounded-full transition-all duration-500',

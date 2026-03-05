@@ -10,6 +10,7 @@ This folder contains a local-first SQLite implementation for Wavhudi OS.
   - `tasks` (`PlannerDbBridge`)
   - `journal` (`PlannerJournalBridge`)
   - `settings` (`PlannerSettingsBridge`)
+  - `projects` (`PlannerProjectBridge`)
 
 ## Required dependency
 
@@ -38,5 +39,6 @@ Expose these bridge objects in preload:
 - `window.wavhudiDb = repos.tasks`
 - `window.wavhudiJournalDb = repos.journal`
 - `window.wavhudiSettingsDb = repos.settings`
+- `window.wavhudiProjectDb = repos.projects`
 
 The frontend `src/lib/db.ts` automatically uses these bridges when present, and falls back to `localStorage` in browser-only mode.
