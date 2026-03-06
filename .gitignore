@@ -62,3 +62,6 @@ planner.db
 .claude/
 .agent/
 .agents/
+
+# Git worktrees
+.worktrees/
