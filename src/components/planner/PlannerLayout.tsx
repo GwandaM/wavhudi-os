@@ -20,6 +20,7 @@ import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
 import { useRitualReminders } from '@/hooks/useRitualReminders';
 import { DayColumn } from './DayColumn';
 import { MyDayView } from './MyDayView';
+import { MonthGridView } from './MonthGridView';
 import { CalendarEvents } from './CalendarEvents';
 import { BacklogList } from './BacklogList';
 import { TaskDetailPanel } from './TaskDetailPanel';
@@ -509,57 +510,88 @@ export function PlannerLayout() {
                   }}
                 />
               </div>
-              <div ref={scrollRef} className="flex-1 overflow-x-auto scrollbar-thin">
-                <div className="flex h-full">
-                  {days.map((date) => {
-                    const dateStr = format(date, 'yyyy-MM-dd');
+
+              {rangeMode === 'month' ? (
+                <MonthGridView
+                  today={today}
+                  getTasksForDate={getTasksForDate}
+                  onTaskClick={setSelectedTask}
+                  onCompleteTask={async (id) => {
+                    const task = tasks.find(t => t.id === id);
+                    if (task?.status === 'completed') {
+                      await updateTask(id, { status: 'scheduled' });
+                    } else {
+                      await completeTask(id);
+                    }
+                  }}
+                  onAddTask={(title, dateStr, priority, estimated_minutes) => {
                     const dayTasks = getTasksForDate(dateStr);
-                    const isTodayCol = todayStr === dateStr;
-                    return (
-                      <div key={dateStr} data-today={isTodayCol || undefined}>
-                        <DayColumn
-                          date={date}
-                          tasks={dayTasks}
-                          onTaskClick={setSelectedTask}
-                          projects={projects}
-                          onAddTask={(title, dateStr, priority, estimated_minutes) => {
-                            createTask({
-                              ...newTaskDefaults,
-                              title,
-                              status: 'scheduled',
-                              start_date: dateStr,
-                              end_date: null,
-                              order_index: dayTasks.length,
-                              estimated_minutes: estimated_minutes ?? null,
-                              priority: priority ?? 'none',
-                            });
-                          }}
-                        />
-                      </div>
-                    );
-                  })}
+                    createTask({
+                      ...newTaskDefaults,
+                      title,
+                      status: 'scheduled',
+                      start_date: dateStr,
+                      end_date: null,
+                      order_index: dayTasks.length,
+                      estimated_minutes: estimated_minutes ?? null,
+                      priority: priority ?? 'none',
+                    });
+                  }}
+                  projects={projects}
+                />
+              ) : (
+                <div ref={scrollRef} className="flex-1 overflow-x-auto scrollbar-thin">
+                  <div className="flex h-full">
+                    {days.map((date) => {
+                      const dateStr = format(date, 'yyyy-MM-dd');
+                      const dayTasks = getTasksForDate(dateStr);
+                      const isTodayCol = todayStr === dateStr;
+                      return (
+                        <div key={dateStr} data-today={isTodayCol || undefined}>
+                          <DayColumn
+                            date={date}
+                            tasks={dayTasks}
+                            onTaskClick={setSelectedTask}
+                            projects={projects}
+                            onAddTask={(title, dateStr, priority, estimated_minutes) => {
+                              createTask({
+                                ...newTaskDefaults,
+                                title,
+                                status: 'scheduled',
+                                start_date: dateStr,
+                                end_date: null,
+                                order_index: dayTasks.length,
+                                estimated_minutes: estimated_minutes ?? null,
+                                priority: priority ?? 'none',
+                              });
+                            }}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
+              )}
             </>
           )}
         </main>
-
-        {/* Right Panel */}
-        {selectedTask && (
-          <TaskDetailPanel
-            task={selectedTask}
-            projects={projects}
-            onClose={() => setSelectedTask(null)}
-            onUpdate={async (id, changes) => {
-              await updateTask(id, changes);
-              const updated = await import('@/services/DatabaseService').then(m => m.DatabaseService.getTaskById(id));
-              if (updated) setSelectedTask(updated);
-            }}
-            onComplete={handleCompleteToggle}
-            onDelete={deleteTask}
-          />
-        )}
       </div>
+
+      {/* Task Detail — floating window (rendered via portal) */}
+      {selectedTask && (
+        <TaskDetailPanel
+          task={selectedTask}
+          projects={projects}
+          onClose={() => setSelectedTask(null)}
+          onUpdate={async (id, changes) => {
+            await updateTask(id, changes);
+            const updated = await import('@/services/DatabaseService').then(m => m.DatabaseService.getTaskById(id));
+            if (updated) setSelectedTask(updated);
+          }}
+          onComplete={handleCompleteToggle}
+          onDelete={deleteTask}
+        />
+      )}
 
       <DragOverlay>
         {activeTask && (
