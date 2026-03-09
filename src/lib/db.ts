@@ -27,6 +27,14 @@ export interface Project {
   created_at: string;
 }
 
+export interface Note {
+  id: number;
+  title: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface RecurrenceRule {
   frequency: 'daily' | 'weekdays' | 'weekly' | 'biweekly' | 'monthly';
   end_date?: string;
@@ -37,7 +45,7 @@ export interface Task {
   title: string;
   description: string;
   daily_notes: DailyNote[];
-  status: 'backlog' | 'scheduled' | 'completed';
+  status: 'backlog' | 'scheduled' | 'in_progress' | 'completed';
   start_date: string | null;
   end_date: string | null;
   order_index: number;
@@ -103,6 +111,14 @@ export interface PlannerProjectBridge {
   delete(id: number): Promise<void>;
 }
 
+export interface PlannerNotesBridge {
+  getAll(): Promise<Note[]>;
+  get(id: number): Promise<Note | undefined>;
+  add(note: Omit<Note, 'id' | 'created_at' | 'updated_at'>): Promise<number>;
+  update(id: number, changes: Partial<Omit<Note, 'id' | 'created_at' | 'updated_at'>>): Promise<void>;
+  delete(id: number): Promise<void>;
+}
+
 const DEFAULT_SETTINGS: UserSettings = {
   daily_capacity_minutes: 480, // 8 hours
   planning_ritual_enabled: true,
@@ -115,10 +131,12 @@ const DEFAULT_SETTINGS: UserSettings = {
 let nextId = 1;
 let nextJournalId = 1;
 let nextProjectId = 1;
+let nextNoteId = 1;
 
 let memoryTasks: Task[] = [];
 let memoryJournals: DailyJournal[] = [];
 let memoryProjects: Project[] = [];
+let memoryNotes: Note[] = [];
 let memorySettings: UserSettings = { ...DEFAULT_SETTINGS };
 
 function clone<T>(value: T): T {
@@ -327,5 +345,69 @@ export const projectDb: PlannerProjectBridge = {
   },
   async delete(id: number) {
     return getProjectDb().delete(id);
+  },
+};
+
+// --- Notes Storage ---
+const inMemoryNotesDb: PlannerNotesBridge = {
+  async getAll(): Promise<Note[]> {
+    return clone(memoryNotes).sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+  },
+
+  async get(id: number): Promise<Note | undefined> {
+    const note = memoryNotes.find((item) => item.id === id);
+    return note ? clone(note) : undefined;
+  },
+
+  async add(note: Omit<Note, 'id' | 'created_at' | 'updated_at'>): Promise<number> {
+    const id = nextNoteId++;
+    const now = new Date().toISOString();
+    memoryNotes = [
+      clone({
+        id,
+        title: note.title,
+        content: note.content,
+        created_at: now,
+        updated_at: now,
+      }),
+      ...memoryNotes,
+    ];
+    return id;
+  },
+
+  async update(id: number, changes: Partial<Omit<Note, 'id' | 'created_at' | 'updated_at'>>): Promise<void> {
+    const now = new Date().toISOString();
+    memoryNotes = memoryNotes.map((note) =>
+      note.id === id ? clone({ ...note, ...changes, updated_at: now }) : note
+    );
+  },
+
+  async delete(id: number): Promise<void> {
+    memoryNotes = memoryNotes.filter((note) => note.id !== id);
+  },
+};
+
+function getNotesDb(): PlannerNotesBridge {
+  if (getElectronApi()?.notes) {
+    return getElectronApi()!.notes;
+  }
+  return inMemoryNotesDb;
+}
+
+export const notesDb: PlannerNotesBridge = {
+  async getAll() {
+    return getNotesDb().getAll();
+  },
+  async get(id: number) {
+    return getNotesDb().get(id);
+  },
+  async add(note: Omit<Note, 'id' | 'created_at' | 'updated_at'>) {
+    return getNotesDb().add(note);
+  },
+  async update(id: number, changes: Partial<Omit<Note, 'id' | 'created_at' | 'updated_at'>>) {
+    return getNotesDb().update(id, changes);
+  },
+  async delete(id: number) {
+    return getNotesDb().delete(id);
   },
 };

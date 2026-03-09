@@ -101,9 +101,12 @@ export function ShutdownRitual({
               {completedTasks.length > 0 && (
                 <div className="space-y-1.5 max-h-[150px] overflow-y-auto scrollbar-thin">
                   {completedTasks.map(task => (
-                    <div key={task.id} className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <div
+                      key={task.id}
+                      className="flex items-center gap-2 rounded-md border border-completed/15 bg-completed/5 px-2.5 py-1.5 text-sm text-completed"
+                    >
                       <CheckCircle2 className="h-3.5 w-3.5 text-completed shrink-0" />
-                      <span className="truncate line-through">{task.title}</span>
+                      <span className="truncate font-medium">{task.title}</span>
                     </div>
                   ))}
                 </div>

@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { X, CheckCircle2, Trash2, Calendar, Plus, Square, CheckSquare, Pin, Maximize2, Minimize2, Save, GripHorizontal, ChevronDown, ChevronRight } from 'lucide-react';
+import { X, Trash2, Calendar, Plus, Square, CheckSquare, Pin, Maximize2, Minimize2, GripHorizontal, ChevronDown, ChevronRight } from 'lucide-react';
 import { format, addDays, differenceInCalendarDays, parse } from 'date-fns';
 import type { Task, DailyNote, Priority, Project, Subtask } from '@/lib/db';
 import { cn } from '@/lib/utils';
 import { RichTextEditor } from './RichTextEditor';
-import { PRIORITY_LABELS } from '@/lib/priority';
+import { getProgressColor, PROGRESS_BADGE, PROGRESS_LABELS } from '@/lib/statusColors';
 
 interface TaskDetailPanelProps {
   task: Task | null;
@@ -39,13 +39,21 @@ const TIME_OPTIONS = [
   { value: 480, label: 'Estimate: 8 hours' },
 ];
 
-const RECURRENCE_OPTIONS = [
+type RecurrenceFrequency = NonNullable<Task['recurrence_rule']>['frequency'];
+
+const RECURRENCE_OPTIONS: { value: '' | RecurrenceFrequency; label: string }[] = [
   { value: '', label: 'Repeat: None' },
   { value: 'daily', label: 'Repeat: Daily' },
   { value: 'weekdays', label: 'Repeat: Weekdays' },
   { value: 'weekly', label: 'Repeat: Weekly' },
   { value: 'biweekly', label: 'Repeat: Biweekly' },
   { value: 'monthly', label: 'Repeat: Monthly' },
+];
+
+const PROGRESS_OPTIONS = [
+  { value: 'scheduled', label: 'Progress: Not Yet Started' },
+  { value: 'in_progress', label: 'Progress: In Progress' },
+  { value: 'completed', label: 'Progress: Completed' },
 ];
 
 export function TaskDetailPanel({ task, projects = [], onClose, onUpdate, onComplete, onDelete }: TaskDetailPanelProps) {
@@ -58,7 +66,6 @@ export function TaskDetailPanel({ task, projects = [], onClose, onUpdate, onComp
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showSubtasks, setShowSubtasks] = useState(false);
 
-  // Window position & size
   const [pos, setPos] = useState({ x: -1, y: -1 });
   const [size, setSize] = useState({ w: DEFAULT_WIDTH, h: DEFAULT_HEIGHT });
   const windowRef = useRef<HTMLDivElement>(null);
@@ -141,12 +148,18 @@ export function TaskDetailPanel({ task, projects = [], onClose, onUpdate, onComp
 
   if (!task) return null;
 
-  const handleBlurTitle = () => {
-    if (title !== task.title) onUpdate(task.id!, { title });
-  };
-
-  const handleBlurDescription = () => {
-    if (description !== task.description) onUpdate(task.id!, { description });
+  // ─── Auto-save on close ───
+  const flushAndClose = async () => {
+    if (task?.id) {
+      const changes: Partial<Task> = {};
+      if (title !== task.title) changes.title = title;
+      if (description !== task.description) changes.description = description;
+      if (JSON.stringify(dailyNotes) !== JSON.stringify(task.daily_notes || [])) changes.daily_notes = dailyNotes;
+      if (Object.keys(changes).length > 0) {
+        await onUpdate(task.id, changes);
+      }
+    }
+    onClose();
   };
 
   const getNoteForDate = (date: string) => dailyNotes.find(n => n.date === date)?.content || '';
@@ -164,24 +177,6 @@ export function TaskDetailPanel({ task, projects = [], onClose, onUpdate, onComp
     if (JSON.stringify(dailyNotes) !== JSON.stringify(currentNotes)) {
       onUpdate(task.id!, { daily_notes: dailyNotes });
     }
-  };
-
-  const hasUnsavedChanges = useMemo(() => {
-    if (!task) return false;
-    return (
-      title !== task.title ||
-      description !== task.description ||
-      JSON.stringify(dailyNotes) !== JSON.stringify(task.daily_notes || [])
-    );
-  }, [task, title, description, dailyNotes]);
-
-  const handleSave = async () => {
-    if (!task?.id) return;
-    const changes: Partial<Task> = {};
-    if (title !== task.title) changes.title = title;
-    if (description !== task.description) changes.description = description;
-    if (JSON.stringify(dailyNotes) !== JSON.stringify(task.daily_notes || [])) changes.daily_notes = dailyNotes;
-    if (Object.keys(changes).length > 0) await onUpdate(task.id, changes);
   };
 
   const handleAddSubtask = () => {
@@ -219,10 +214,12 @@ export function TaskDetailPanel({ task, projects = [], onClose, onUpdate, onComp
 
   const formatDateHeading = (dateStr: string) => format(parse(dateStr, 'yyyy-MM-dd', new Date()), 'EEEE, MMM d');
 
-  const isCompleted = task.status === 'completed';
-  const currentProject = projects.find(p => p.id === task.project_id);
+  const progressColor = getProgressColor(task);
 
-  const selectClass = 'h-7 rounded-md border border-border/40 bg-secondary/30 px-2 text-[12px] font-medium outline-none focus:ring-1 focus:ring-primary/30 appearance-none cursor-pointer';
+  // For the progress dropdown, map backlog to scheduled display
+  const progressValue = task.status === 'backlog' ? 'scheduled' : task.status;
+
+  const selectClass = 'h-7 rounded-md border border-border/40 bg-secondary/30 px-2 text-[12px] font-medium outline-none focus:ring-1 focus:ring-primary/30 cursor-pointer';
 
   const windowStyle: React.CSSProperties = isFullscreen
     ? { position: 'fixed', inset: 0, width: '100vw', height: '100vh', zIndex: 50 }
@@ -230,7 +227,7 @@ export function TaskDetailPanel({ task, projects = [], onClose, onUpdate, onComp
 
   const panel = (
     <>
-      <div className="fixed inset-0 z-40 bg-black/20 backdrop-blur-[2px]" onClick={onClose} />
+      <div className="fixed inset-0 z-40 bg-black/20 backdrop-blur-[2px]" onClick={flushAndClose} />
 
       <div
         ref={windowRef}
@@ -261,7 +258,7 @@ export function TaskDetailPanel({ task, projects = [], onClose, onUpdate, onComp
               {isFullscreen ? <Minimize2 className="h-3.5 w-3.5" /> : <Maximize2 className="h-3.5 w-3.5" />}
             </button>
             <button
-              onClick={onClose}
+              onClick={flushAndClose}
               className="rounded-md p-1.5 hover:bg-destructive/10 hover:text-destructive transition-colors text-muted-foreground"
             >
               <X className="h-3.5 w-3.5" />
@@ -271,26 +268,23 @@ export function TaskDetailPanel({ task, projects = [], onClose, onUpdate, onComp
 
         {/* Scrollable content */}
         <div className="flex-1 overflow-y-auto scrollbar-thin min-h-0">
-          {/* ─── Header zone (compact) ─── */}
+          {/* ─── Header zone ─── */}
           <div className="px-5 pt-4 pb-3 space-y-3">
             {/* Title */}
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              onBlur={handleBlurTitle}
               className="w-full text-[17px] font-semibold bg-transparent border-none outline-none placeholder:text-muted-foreground/40"
               placeholder="Task title..."
             />
 
-            {/* Metadata row: status, pin, date */}
+            {/* Metadata row: progress badge, pin, date */}
             <div className="flex items-center gap-2 flex-wrap">
               <span className={cn(
-                'inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium',
-                isCompleted ? 'bg-completed/10 text-completed'
-                  : task.status === 'backlog' ? 'bg-secondary text-secondary-foreground'
-                  : 'bg-accent text-accent-foreground'
+                'inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-semibold',
+                PROGRESS_BADGE[progressColor],
               )}>
-                {task.status.charAt(0).toUpperCase() + task.status.slice(1)}
+                {PROGRESS_LABELS[task.status] || task.status}
               </span>
               <button
                 onClick={() => onUpdate(task.id!, { is_pinned: !task.is_pinned })}
@@ -311,8 +305,22 @@ export function TaskDetailPanel({ task, projects = [], onClose, onUpdate, onComp
               )}
             </div>
 
-            {/* ─── Dropdown row: priority, time, repeat, project ─── */}
+            {/* ─── Dropdown row ─── */}
             <div className="flex items-center gap-2 flex-wrap">
+              {/* Progress */}
+              <select
+                value={progressValue}
+                onChange={(e) => {
+                  const v = e.target.value as Task['status'];
+                  onUpdate(task.id!, { status: v });
+                }}
+                className={selectClass}
+              >
+                {PROGRESS_OPTIONS.map(o => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+
               {/* Priority */}
               <select
                 value={task.priority || 'none'}
@@ -343,9 +351,9 @@ export function TaskDetailPanel({ task, projects = [], onClose, onUpdate, onComp
                 <select
                   value={task.recurrence_rule?.frequency ?? ''}
                   onChange={(e) => {
-                    const v = e.target.value;
+                    const v = e.target.value as '' | RecurrenceFrequency;
                     onUpdate(task.id!, {
-                      recurrence_rule: v ? { frequency: v as any, end_date: task.recurrence_rule?.end_date } : null,
+                      recurrence_rule: v ? { frequency: v, end_date: task.recurrence_rule?.end_date } : null,
                     });
                   }}
                   className={selectClass}
@@ -373,7 +381,7 @@ export function TaskDetailPanel({ task, projects = [], onClose, onUpdate, onComp
                 </select>
               )}
 
-              {/* Actual time — inline */}
+              {/* Actual time */}
               <div className="flex items-center gap-1">
                 <input
                   type="number"
@@ -389,13 +397,10 @@ export function TaskDetailPanel({ task, projects = [], onClose, onUpdate, onComp
               </div>
             </div>
 
-            {/* Tags — inline */}
+            {/* Tags */}
             <div className="flex items-center gap-1.5 flex-wrap">
               {(task.tags || []).map((tag) => (
-                <span
-                  key={tag}
-                  className="inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-[11px] font-medium"
-                >
+                <span key={tag} className="inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-[11px] font-medium">
                   {tag}
                   <button onClick={() => handleRemoveTag(tag)} className="text-muted-foreground hover:text-destructive transition-colors">
                     <X className="h-2 w-2" />
@@ -413,10 +418,9 @@ export function TaskDetailPanel({ task, projects = [], onClose, onUpdate, onComp
             </div>
           </div>
 
-          {/* ─── Divider ─── */}
           <div className="border-t border-border/30" />
 
-          {/* ─── Notes section (prominent) ─── */}
+          {/* ─── Notes (prominent) ─── */}
           <div className="px-5 pt-3 pb-4">
             {isMultiDay ? (
               <div>
@@ -447,7 +451,6 @@ export function TaskDetailPanel({ task, projects = [], onClose, onUpdate, onComp
                 <RichTextEditor
                   content={description}
                   onChange={setDescription}
-                  onBlur={handleBlurDescription}
                   placeholder="Log what you achieved, reflections, or notes..."
                 />
               </div>
@@ -470,11 +473,14 @@ export function TaskDetailPanel({ task, projects = [], onClose, onUpdate, onComp
             </button>
 
             {showSubtasks && (
-              <div className="space-y-1 pl-1">
-                {subtasks.map((subtask) => (
+                <div className="space-y-1 pl-1">
+                  {subtasks.map((subtask) => (
                   <div
                     key={subtask.id}
-                    className="group flex items-center gap-2 rounded-md px-2 py-1 hover:bg-secondary/50 transition-colors"
+                    className={cn(
+                      'group flex items-center gap-2 rounded-md px-2 py-1 transition-colors',
+                      subtask.completed ? 'bg-completed/5 hover:bg-completed/10' : 'hover:bg-secondary/50'
+                    )}
                   >
                     <button onClick={() => handleToggleSubtask(subtask.id)} className="shrink-0">
                       {subtask.completed
@@ -482,7 +488,7 @@ export function TaskDetailPanel({ task, projects = [], onClose, onUpdate, onComp
                         : <Square className="h-3.5 w-3.5 text-muted-foreground" />
                       }
                     </button>
-                    <span className={cn('flex-1 text-[13px]', subtask.completed && 'line-through text-muted-foreground')}>
+                    <span className={cn('flex-1 text-[13px]', subtask.completed && 'font-medium text-completed')}>
                       {subtask.title}
                     </span>
                     <button
@@ -507,39 +513,14 @@ export function TaskDetailPanel({ task, projects = [], onClose, onUpdate, onComp
           </div>
         </div>
 
-        {/* ─── Actions bar ─── */}
-        <div className="px-4 py-3 border-t border-border/40 flex items-center gap-2 shrink-0">
-          <button
-            onClick={handleSave}
-            disabled={!hasUnsavedChanges}
-            className={cn(
-              'flex-1 flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-[13px] font-medium transition-colors',
-              hasUnsavedChanges
-                ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-                : 'bg-secondary text-muted-foreground cursor-not-allowed'
-            )}
-          >
-            <Save className="h-3.5 w-3.5" />
-            {hasUnsavedChanges ? 'Save' : 'Saved'}
-          </button>
-          <button
-            onClick={() => onComplete(task.id!)}
-            className={cn(
-              'flex-1 flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-[13px] font-medium transition-colors',
-              isCompleted
-                ? 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
-                : 'bg-completed text-completed-foreground hover:bg-completed/90'
-            )}
-          >
-            <CheckCircle2 className="h-3.5 w-3.5" />
-            {isCompleted ? 'Undo' : 'Complete'}
-          </button>
+        {/* ─── Bottom bar: just delete ─── */}
+        <div className="px-4 py-2.5 border-t border-border/40 flex items-center justify-end shrink-0">
           <button
             onClick={() => { onDelete(task.id!); onClose(); }}
-            className="flex items-center justify-center rounded-lg px-3 py-2 text-[13px] font-medium text-destructive hover:bg-destructive/10 transition-colors"
-            title="Delete task"
+            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-medium text-destructive hover:bg-destructive/10 transition-colors"
           >
             <Trash2 className="h-3.5 w-3.5" />
+            Delete
           </button>
         </div>
 

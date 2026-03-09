@@ -14,6 +14,8 @@ interface MyDayViewProps {
   tasks: Task[];
   capacityMinutes: number;
   onTaskClick: (task: Task) => void;
+  onTaskToggleComplete?: (task: Task) => void | Promise<void>;
+  onTaskDelete?: (task: Task) => void | Promise<void>;
   onAddTask: (title: string, priority?: Priority, estimated_minutes?: number | null) => void;
   isPlanningDone: boolean;
   isShutdownDone: boolean;
@@ -26,6 +28,8 @@ export function MyDayView({
   tasks,
   capacityMinutes,
   onTaskClick,
+  onTaskToggleComplete,
+  onTaskDelete,
   onAddTask,
   isPlanningDone,
   isShutdownDone,
@@ -115,6 +119,8 @@ export function MyDayView({
               onClick={onTaskClick}
               isMultiDay={!!task.end_date && task.end_date !== task.start_date}
               projects={projects}
+              onToggleComplete={onTaskToggleComplete}
+              onDelete={onTaskDelete}
             />
           ))}
         </SortableContext>
@@ -144,6 +150,8 @@ export function MyDayView({
               onClick={onTaskClick}
               isMultiDay={!!task.end_date && task.end_date !== task.start_date}
               projects={projects}
+              onToggleComplete={onTaskToggleComplete}
+              onDelete={onTaskDelete}
             />
           ))}
         </div>

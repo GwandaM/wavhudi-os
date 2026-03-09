@@ -1,6 +1,6 @@
 // TODO: Swap IndexedDB wrapper with better-sqlite3 IPC calls for native Electron build.
 
-import { db, journalDb, settingsDb, projectDb, type Task, type DailyJournal, type UserSettings, type Project } from '@/lib/db';
+import { db, journalDb, settingsDb, projectDb, notesDb, type Task, type DailyJournal, type UserSettings, type Project, type Note } from '@/lib/db';
 
 export const DatabaseService = {
   async getAllTasks(): Promise<Task[]> {
@@ -108,6 +108,26 @@ export const DatabaseService = {
   // --- Project CRUD ---
   async getAllProjects(): Promise<Project[]> {
     return projectDb.getAll();
+  },
+
+  async getAllNotes(): Promise<Note[]> {
+    return notesDb.getAll();
+  },
+
+  async getNoteById(id: number): Promise<Note | undefined> {
+    return notesDb.get(id);
+  },
+
+  async createNote(note: Omit<Note, 'id' | 'created_at' | 'updated_at'>): Promise<number> {
+    return notesDb.add(note);
+  },
+
+  async updateNote(id: number, changes: Partial<Omit<Note, 'id' | 'created_at' | 'updated_at'>>): Promise<void> {
+    await notesDb.update(id, changes);
+  },
+
+  async deleteNote(id: number): Promise<void> {
+    await notesDb.delete(id);
   },
 
   async createProject(project: Omit<Project, 'id' | 'created_at'>): Promise<number> {

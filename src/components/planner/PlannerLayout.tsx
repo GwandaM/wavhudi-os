@@ -11,9 +11,10 @@ import {
 } from '@dnd-kit/core';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { format, addDays, subDays, startOfMonth, endOfMonth, differenceInCalendarDays } from 'date-fns';
-import { CalendarDays, Inbox as InboxIcon, Sun, LayoutGrid, Search, FolderOpen, Plus, MoreHorizontal, BarChart3 } from 'lucide-react';
+import { CalendarDays, Inbox as InboxIcon, Sun, LayoutGrid, Search, FolderOpen, Plus, MoreHorizontal, BarChart3, ChevronDown, ChevronRight, type LucideIcon, FileText } from 'lucide-react';
 import { useTasks } from '@/hooks/useTasks';
 import { useProjects } from '@/hooks/useProjects';
+import { useNotes } from '@/hooks/useNotes';
 import { useDailyJournal } from '@/hooks/useDailyJournal';
 import { useSettings } from '@/hooks/useSettings';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
@@ -33,8 +34,61 @@ import { WeeklyReview } from './WeeklyReview';
 import { DateRangeSelector, type RangeMode } from './DateRangeSelector';
 import type { Task, Priority, Project } from '@/lib/db';
 import { cn } from '@/lib/utils';
+import { DatabaseService } from '@/services/DatabaseService';
+import { NotesView } from './NotesView';
+import { SidebarNotesSection } from './SidebarNotesSection';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 
 type ViewMode = 'myday' | 'timeline' | 'review';
+type SidebarSectionId = 'calendar' | 'projects' | 'backlog' | 'notes';
+
+function SidebarSection({
+  title,
+  icon: Icon,
+  count,
+  open,
+  onOpenChange,
+  action,
+  children,
+}: {
+  title: string;
+  icon: LucideIcon;
+  count?: number;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  return (
+    <Collapsible open={open} onOpenChange={onOpenChange} className="px-4 py-3">
+      <div className="flex items-center gap-2">
+        <CollapsibleTrigger asChild>
+          <button
+            type="button"
+            className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 text-left transition-colors hover:bg-muted/30"
+          >
+            {open ? (
+              <ChevronDown className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            )}
+            <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+            <h2 className="flex-1 truncate text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              {title}
+            </h2>
+            {count !== undefined && (
+              <span className="text-[11px] text-muted-foreground">{count}</span>
+            )}
+          </button>
+        </CollapsibleTrigger>
+        {action}
+      </div>
+      <CollapsibleContent className="pt-3">
+        {children}
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
 
 export function PlannerLayout() {
   const {
@@ -51,6 +105,13 @@ export function PlannerLayout() {
   } = useTasks();
 
   const { projects, createProject, updateProject, deleteProject, getProjectById } = useProjects();
+  const {
+    notes,
+    loading: notesLoading,
+    createNote,
+    updateNote,
+    deleteNote,
+  } = useNotes();
 
   const today = useMemo(() => new Date(), []);
   const todayStr = format(today, 'yyyy-MM-dd');
@@ -59,6 +120,7 @@ export function PlannerLayout() {
   const { journal, isPlanningDone, isShutdownDone, updateJournal } = useDailyJournal(todayStr);
 
   const [viewMode, setViewMode] = useState<ViewMode>('myday');
+  const [selectedNoteId, setSelectedNoteId] = useState<number | null>(null);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [showPlanningRitual, setShowPlanningRitual] = useState(false);
@@ -81,6 +143,12 @@ export function PlannerLayout() {
   const [showNewProject, setShowNewProject] = useState(false);
   const [newProjectName, setNewProjectName] = useState('');
   const [filterProjectId, setFilterProjectId] = useState<number | null>(null);
+  const [sidebarSections, setSidebarSections] = useState<Record<SidebarSectionId, boolean>>({
+    calendar: true,
+    projects: true,
+    backlog: true,
+    notes: true,
+  });
 
   const days = useMemo(() => {
     const arr: Date[] = [];
@@ -122,6 +190,16 @@ export function PlannerLayout() {
   const backlogTasks = getBacklogTasks();
   const todayTasks = getTasksForDate(todayStr);
   const capacityMinutes = settings?.daily_capacity_minutes ?? 480;
+  const selectedNote = notes.find((note) => note.id === selectedNoteId) ?? null;
+
+  const handleSwitchView = useCallback((view: ViewMode) => {
+    setSelectedNoteId(null);
+    setViewMode(view);
+  }, []);
+
+  const setSidebarSectionOpen = useCallback((section: SidebarSectionId, open: boolean) => {
+    setSidebarSections((current) => ({ ...current, [section]: open }));
+  }, []);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -202,15 +280,25 @@ export function PlannerLayout() {
   };
 
   const handleCompleteToggle = async (id: number) => {
-    const task = selectedTask;
-    if (task?.status === 'completed') {
-      await updateTask(id, { status: 'scheduled' });
+    const task = tasks.find((item) => item.id === id);
+    if (!task) return;
+
+    if (task.status === 'completed') {
+      await updateTask(id, { status: task.start_date ? 'scheduled' : 'backlog' });
+    } else if (!task.start_date) {
+      await updateTask(id, { status: 'completed', start_date: todayStr, end_date: null });
     } else {
       await completeTask(id);
     }
-    const updated = await import('@/services/DatabaseService').then(m => m.DatabaseService.getTaskById(id));
-    if (updated) setSelectedTask(updated);
+
+    const updated = await DatabaseService.getTaskById(id);
+    setSelectedTask((current) => current?.id === id ? updated ?? null : current);
   };
+
+  const handleTaskDelete = useCallback(async (task: Task) => {
+    setSelectedTask((current) => current?.id === task.id ? null : current);
+    await deleteTask(task.id);
+  }, [deleteTask]);
 
   const handlePlanningComplete = async () => {
     await updateJournal({ planning_completed: true });
@@ -228,16 +316,17 @@ export function PlannerLayout() {
   useKeyboardShortcuts(useMemo(() => ({
     onCommandPalette: () => setShowCommandPalette(prev => !prev),
     onNewTask: () => setShowCommandPalette(true),
-    onSwitchMyDay: () => setViewMode('myday'),
-    onSwitchTimeline: () => setViewMode('timeline'),
-    onSwitchReview: () => setViewMode('review'),
+    onSwitchMyDay: () => handleSwitchView('myday'),
+    onSwitchTimeline: () => handleSwitchView('timeline'),
+    onSwitchReview: () => handleSwitchView('review'),
     onEscape: () => {
       if (showCommandPalette) setShowCommandPalette(false);
       else if (showShortcutsHelp) setShowShortcutsHelp(false);
+      else if (selectedNote) setSelectedNoteId(null);
       else if (selectedTask) setSelectedTask(null);
     },
     onShowShortcuts: () => setShowShortcutsHelp(prev => !prev),
-  }), [showCommandPalette, showShortcutsHelp, selectedTask]));
+  }), [handleSwitchView, selectedNote, selectedTask, showCommandPalette, showShortcutsHelp]));
 
   // Scroll today into view (timeline mode)
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -284,7 +373,7 @@ export function PlannerLayout() {
         onUpdateJournal={updateJournal}
         onMoveTask={moveTaskToDate}
         onMoveToBacklog={async (id) => {
-          await import('@/services/DatabaseService').then(m => m.DatabaseService.moveTaskToBacklog(id));
+          await DatabaseService.moveTaskToBacklog(id);
           await refresh();
         }}
         onComplete={handleShutdownComplete}
@@ -319,7 +408,7 @@ export function PlannerLayout() {
           {/* View Toggle */}
           <div className="px-3 pb-3 flex items-center gap-0.5">
             <button
-              onClick={() => setViewMode('myday')}
+              onClick={() => handleSwitchView('myday')}
               className={cn(
                 'flex-1 flex items-center justify-center gap-1 px-1.5 py-1.5 rounded-md text-[11px] font-medium transition-colors min-w-0',
                 viewMode === 'myday'
@@ -331,7 +420,7 @@ export function PlannerLayout() {
               <span className="truncate">My Day</span>
             </button>
             <button
-              onClick={() => setViewMode('timeline')}
+              onClick={() => handleSwitchView('timeline')}
               className={cn(
                 'flex-1 flex items-center justify-center gap-1 px-1.5 py-1.5 rounded-md text-[11px] font-medium transition-colors min-w-0',
                 viewMode === 'timeline'
@@ -343,7 +432,7 @@ export function PlannerLayout() {
               <span className="truncate">Timeline</span>
             </button>
             <button
-              onClick={() => setViewMode('review')}
+              onClick={() => handleSwitchView('review')}
               className={cn(
                 'flex-1 flex items-center justify-center gap-1 px-1.5 py-1.5 rounded-md text-[11px] font-medium transition-colors min-w-0',
                 viewMode === 'review'
@@ -358,31 +447,33 @@ export function PlannerLayout() {
 
           <div className="flex-1 overflow-y-auto scrollbar-thin">
             {/* Outlook Events */}
-            <div className="px-4 py-3">
-              <div className="flex items-center gap-2 mb-3">
-                <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />
-                <h2 className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
-                  Calendar
-                </h2>
-              </div>
+            <SidebarSection
+              title="Calendar"
+              icon={CalendarDays}
+              open={sidebarSections.calendar}
+              onOpenChange={(open) => setSidebarSectionOpen('calendar', open)}
+            >
               <CalendarEvents date={todayStr} />
-            </div>
+            </SidebarSection>
 
             {/* Projects */}
-            <div className="px-4 py-3">
-              <div className="flex items-center gap-2 mb-3">
-                <FolderOpen className="h-3.5 w-3.5 text-muted-foreground" />
-                <h2 className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide flex-1">
-                  Projects
-                </h2>
+            <SidebarSection
+              title="Projects"
+              icon={FolderOpen}
+              count={projects.length}
+              open={sidebarSections.projects}
+              onOpenChange={(open) => setSidebarSectionOpen('projects', open)}
+              action={sidebarSections.projects ? (
                 <button
+                  type="button"
                   onClick={() => setShowNewProject(true)}
                   className="rounded p-0.5 hover:bg-muted/40 transition-colors text-muted-foreground hover:text-foreground"
                   title="New project"
                 >
                   <Plus className="h-3.5 w-3.5" />
                 </button>
-              </div>
+              ) : undefined}
+            >
               <div className="space-y-0.5">
                 <button
                   onClick={() => setFilterProjectId(null)}
@@ -446,38 +537,75 @@ export function PlannerLayout() {
                   />
                 </form>
               )}
-            </div>
+            </SidebarSection>
 
             {/* Backlog */}
-            <div className="px-4 py-3">
-              <div className="flex items-center gap-2 mb-3">
-                <InboxIcon className="h-3.5 w-3.5 text-muted-foreground" />
-                <h2 className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide flex-1">
-                  Backlog
-                </h2>
-                <span className="text-[11px] text-muted-foreground">{backlogTasks.length}</span>
-              </div>
+            <SidebarSection
+              title="Backlog"
+              icon={InboxIcon}
+              count={backlogTasks.length}
+              open={sidebarSections.backlog}
+              onOpenChange={(open) => setSidebarSectionOpen('backlog', open)}
+            >
               <SortableContext
                 items={backlogTasks.map((t) => `task-${t.id}`)}
                 strategy={verticalListSortingStrategy}
               >
-                <BacklogList tasks={backlogTasks} onTaskClick={setSelectedTask} />
+                <BacklogList
+                  tasks={backlogTasks}
+                  onTaskClick={setSelectedTask}
+                  onTaskToggleComplete={(task) => handleCompleteToggle(task.id)}
+                  onTaskDelete={handleTaskDelete}
+                />
               </SortableContext>
               <div className="mt-3">
                 <AddTaskInput onAdd={handleAddBacklogTask} placeholder="Add to backlog..." />
               </div>
-            </div>
+            </SidebarSection>
+
+            <SidebarSection
+              title="Notes"
+              icon={FileText}
+              count={notes.length}
+              open={sidebarSections.notes}
+              onOpenChange={(open) => setSidebarSectionOpen('notes', open)}
+            >
+              <SidebarNotesSection
+                notes={notes}
+                loading={notesLoading}
+                activeNoteId={selectedNoteId}
+                onSelectNote={setSelectedNoteId}
+                onCreateNote={async () => {
+                  const id = await createNote({ title: 'Untitled note', content: '' });
+                  setSelectedNoteId(id);
+                }}
+              />
+            </SidebarSection>
           </div>
         </aside>
 
         {/* Main Content */}
         <main className="flex-1 flex flex-col min-w-0">
-          {viewMode === 'myday' ? (
+          {selectedNote ? (
+            <NotesView
+              note={selectedNote}
+              onUpdateNote={updateNote}
+              onDeleteNote={async (id) => {
+                const index = notes.findIndex((note) => note.id === id);
+                const fallback = notes[index + 1] ?? notes[index - 1] ?? null;
+                setSelectedNoteId(fallback?.id ?? null);
+                await deleteNote(id);
+              }}
+              onClose={() => setSelectedNoteId(null)}
+            />
+          ) : viewMode === 'myday' ? (
             <div className="flex-1 overflow-y-auto scrollbar-thin">
               <MyDayView
                 tasks={todayTasks}
                 capacityMinutes={capacityMinutes}
                 onTaskClick={setSelectedTask}
+                onTaskToggleComplete={(task) => handleCompleteToggle(task.id)}
+                onTaskDelete={handleTaskDelete}
                 onAddTask={handleAddTodayTask}
                 isPlanningDone={isPlanningDone}
                 isShutdownDone={isShutdownDone}
@@ -490,7 +618,7 @@ export function PlannerLayout() {
             <div className="flex-1 overflow-y-auto scrollbar-thin">
               <WeeklyReview
                 projects={projects}
-                onClose={() => setViewMode('myday')}
+                onClose={() => handleSwitchView('myday')}
               />
             </div>
           ) : (
@@ -516,14 +644,8 @@ export function PlannerLayout() {
                   today={today}
                   getTasksForDate={getTasksForDate}
                   onTaskClick={setSelectedTask}
-                  onCompleteTask={async (id) => {
-                    const task = tasks.find(t => t.id === id);
-                    if (task?.status === 'completed') {
-                      await updateTask(id, { status: 'scheduled' });
-                    } else {
-                      await completeTask(id);
-                    }
-                  }}
+                  onToggleTaskComplete={(task) => handleCompleteToggle(task.id)}
+                  onDeleteTask={handleTaskDelete}
                   onAddTask={(title, dateStr, priority, estimated_minutes) => {
                     const dayTasks = getTasksForDate(dateStr);
                     createTask({
@@ -552,6 +674,8 @@ export function PlannerLayout() {
                             date={date}
                             tasks={dayTasks}
                             onTaskClick={setSelectedTask}
+                            onTaskToggleComplete={(task) => handleCompleteToggle(task.id)}
+                            onTaskDelete={handleTaskDelete}
                             projects={projects}
                             onAddTask={(title, dateStr, priority, estimated_minutes) => {
                               createTask({
@@ -585,11 +709,16 @@ export function PlannerLayout() {
           onClose={() => setSelectedTask(null)}
           onUpdate={async (id, changes) => {
             await updateTask(id, changes);
-            const updated = await import('@/services/DatabaseService').then(m => m.DatabaseService.getTaskById(id));
+            const updated = await DatabaseService.getTaskById(id);
             if (updated) setSelectedTask(updated);
           }}
           onComplete={handleCompleteToggle}
-          onDelete={deleteTask}
+          onDelete={(id) => {
+            const task = tasks.find((item) => item.id === id);
+            if (task) {
+              void handleTaskDelete(task);
+            }
+          }}
         />
       )}
 
@@ -612,7 +741,7 @@ export function PlannerLayout() {
           const input = document.querySelector<HTMLInputElement>('[placeholder*="backlog"]');
           if (input) input.focus();
         }}
-        onSwitchView={setViewMode}
+        onSwitchView={handleSwitchView}
         onStartPlanning={() => setShowPlanningRitual(true)}
         onStartShutdown={() => setShowShutdownRitual(true)}
         onShowShortcuts={() => setShowShortcutsHelp(true)}

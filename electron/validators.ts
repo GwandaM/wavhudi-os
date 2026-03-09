@@ -144,6 +144,8 @@ const settingsUpdateSchema = z
     planning_ritual_enabled: z.boolean().optional(),
     shutdown_ritual_enabled: z.boolean().optional(),
     default_view: z.enum(["myday", "week", "month"]).optional(),
+    planning_reminder_time: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+    shutdown_reminder_time: z.string().regex(/^\d{2}:\d{2}$/).optional(),
   })
   .strict();
 
@@ -166,6 +168,20 @@ const projectUpdateSchema = z
     description: z.string().max(2_000).nullable().optional(),
     is_archived: z.boolean().optional(),
     order_index: boundedOrderSchema.optional(),
+  })
+  .strict();
+
+const noteCreateSchema = z
+  .object({
+    title: z.string().trim().min(1).max(200),
+    content: richTextSchema,
+  })
+  .strict();
+
+const noteUpdateSchema = z
+  .object({
+    title: z.string().trim().min(1).max(200).optional(),
+    content: richTextSchema.optional(),
   })
   .strict();
 
@@ -211,4 +227,12 @@ export function parseProjectCreate(value: unknown) {
 
 export function parseProjectUpdate(value: unknown) {
   return projectUpdateSchema.parse(value);
+}
+
+export function parseNoteCreate(value: unknown) {
+  return noteCreateSchema.parse(value);
+}
+
+export function parseNoteUpdate(value: unknown) {
+  return noteUpdateSchema.parse(value);
 }

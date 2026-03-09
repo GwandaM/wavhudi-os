@@ -20,13 +20,16 @@ import { Check, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { sortByPriority } from '@/lib/priority';
 import { parseTaskInput } from '@/lib/parseTaskInput';
+import { PROGRESS_BG, PROGRESS_BORDER } from '@/lib/statusColors';
 import type { Task, Priority, Project } from '@/lib/db';
+import { TaskContextMenu } from './TaskContextMenu';
 
 interface MonthGridViewProps {
   today: Date;
   getTasksForDate: (dateStr: string) => Task[];
   onTaskClick: (task: Task) => void;
-  onCompleteTask: (id: number) => void;
+  onToggleTaskComplete: (task: Task) => void | Promise<void>;
+  onDeleteTask: (task: Task) => void | Promise<void>;
   onAddTask: (title: string, dateStr: string, priority?: Priority, estimated_minutes?: number | null) => void;
   projects?: Project[];
 }
@@ -66,12 +69,14 @@ const PRIORITY_STYLES: Record<Priority, { border: string; bg: string; text: stri
 function MonthTaskPill({
   task,
   onTaskClick,
-  onComplete,
+  onToggleComplete,
+  onDelete,
   project,
 }: {
   task: Task;
   onTaskClick: (task: Task) => void;
-  onComplete: (id: number) => void;
+  onToggleComplete: (task: Task) => void | Promise<void>;
+  onDelete: (task: Task) => void | Promise<void>;
   project?: Project | null;
 }) {
   const {
@@ -96,56 +101,59 @@ function MonthTaskPill({
   const ps = PRIORITY_STYLES[priority];
 
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      {...attributes}
-      {...listeners}
-      onClick={() => onTaskClick(task)}
-      className={cn(
-        'group flex items-center gap-1 rounded-[4px] border-l-[3px] px-1.5 py-[3px] mb-[2px]',
-        'cursor-grab active:cursor-grabbing touch-none select-none',
-        'transition-all duration-100',
-        'hover:shadow-sm hover:brightness-95 dark:hover:brightness-110',
-        ps.border,
-        isCompleted ? 'bg-muted/30 opacity-50' : ps.bg,
-        isDragging && 'shadow-lg ring-1 ring-primary/20 rotate-[1deg] opacity-80 z-10',
-      )}
-    >
-      {/* Mini checkbox */}
-      <button
-        onClick={(e) => {
-          e.stopPropagation();
-          if (task.id) onComplete(task.id);
-        }}
+    <TaskContextMenu task={task} onToggleComplete={onToggleComplete} onDelete={onDelete}>
+      <div
+        ref={setNodeRef}
+        style={style}
+        {...attributes}
+        {...listeners}
+        onClick={() => onTaskClick(task)}
         className={cn(
-          'shrink-0 h-3 w-3 rounded-[3px] border flex items-center justify-center transition-colors',
+          'group flex items-center gap-1 rounded-[4px] border-l-[3px] px-1.5 py-[3px] mb-[2px]',
+          'cursor-grab active:cursor-grabbing touch-none select-none',
+          'transition-all duration-100',
+          'hover:shadow-sm hover:brightness-95 dark:hover:brightness-110',
           isCompleted
-            ? 'border-completed bg-completed text-completed-foreground'
-            : 'border-muted-foreground/25 hover:border-primary/50',
+            ? cn(PROGRESS_BORDER.completed, PROGRESS_BG.completed, 'ring-1 ring-inset ring-completed/20')
+            : cn(ps.border, ps.bg),
+          isDragging && 'shadow-lg ring-1 ring-primary/20 rotate-[1deg] opacity-80 z-10',
         )}
       >
-        {isCompleted && <Check className="h-2 w-2" />}
-      </button>
+        {/* Mini checkbox */}
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            void onToggleComplete(task);
+          }}
+          className={cn(
+            'shrink-0 h-3 w-3 rounded-[3px] border flex items-center justify-center transition-colors',
+            isCompleted
+              ? 'border-completed bg-completed text-completed-foreground'
+              : 'border-muted-foreground/25 hover:border-primary/50',
+          )}
+        >
+          {isCompleted && <Check className="h-2 w-2" />}
+        </button>
 
-      {/* Project dot */}
-      {project && (
+        {/* Project dot */}
+        {project && (
+          <span
+            className="shrink-0 h-[6px] w-[6px] rounded-full"
+            style={{ backgroundColor: project.color }}
+          />
+        )}
+
+        {/* Title */}
         <span
-          className="shrink-0 h-[6px] w-[6px] rounded-full"
-          style={{ backgroundColor: project.color }}
-        />
-      )}
-
-      {/* Title */}
-      <span
-        className={cn(
-          'flex-1 truncate text-[11px] leading-tight font-medium',
-          isCompleted ? 'line-through text-muted-foreground' : ps.text,
-        )}
-      >
-        {task.title}
-      </span>
-    </div>
+          className={cn(
+            'flex-1 truncate text-[11px] leading-tight font-medium',
+            isCompleted ? 'text-completed' : ps.text,
+          )}
+        >
+          {task.title}
+        </span>
+      </div>
+    </TaskContextMenu>
   );
 }
 
@@ -201,7 +209,8 @@ function MonthDayCell({
   isCurrentMonth,
   tasks,
   onTaskClick,
-  onCompleteTask,
+  onToggleTaskComplete,
+  onDeleteTask,
   onAddTask,
   projects,
 }: {
@@ -209,7 +218,8 @@ function MonthDayCell({
   isCurrentMonth: boolean;
   tasks: Task[];
   onTaskClick: (task: Task) => void;
-  onCompleteTask: (id: number) => void;
+  onToggleTaskComplete: (task: Task) => void | Promise<void>;
+  onDeleteTask: (task: Task) => void | Promise<void>;
   onAddTask: (title: string, priority?: Priority, estimated_minutes?: number | null) => void;
   projects?: Project[];
 }) {
@@ -263,7 +273,8 @@ function MonthDayCell({
                 key={task.id}
                 task={task}
                 onTaskClick={onTaskClick}
-                onComplete={onCompleteTask}
+                onToggleComplete={onToggleTaskComplete}
+                onDelete={onDeleteTask}
                 project={project}
               />
             );
@@ -279,7 +290,8 @@ function MonthDayCell({
                   key={task.id}
                   task={task}
                   onTaskClick={onTaskClick}
-                  onComplete={onCompleteTask}
+                  onToggleComplete={onToggleTaskComplete}
+                  onDelete={onDeleteTask}
                   project={project}
                 />
               );
@@ -302,7 +314,8 @@ export function MonthGridView({
   today,
   getTasksForDate,
   onTaskClick,
-  onCompleteTask,
+  onToggleTaskComplete,
+  onDeleteTask,
   onAddTask,
   projects,
 }: MonthGridViewProps) {
@@ -353,7 +366,8 @@ export function MonthGridView({
                   isCurrentMonth={isCurrentMonth}
                   tasks={tasks}
                   onTaskClick={onTaskClick}
-                  onCompleteTask={onCompleteTask}
+                  onToggleTaskComplete={onToggleTaskComplete}
+                  onDeleteTask={onDeleteTask}
                   onAddTask={(title, priority, estimated_minutes) =>
                     onAddTask(title, dateStr, priority, estimated_minutes)
                   }

@@ -13,6 +13,8 @@ import {
   parseDate,
   parseId,
   parseJournalUpdate,
+  parseNoteCreate,
+  parseNoteUpdate,
   parseProjectCreate,
   parseProjectUpdate,
   parseSettingsUpdate,
@@ -280,6 +282,27 @@ ipcMain.handle("db:projects:update", async (event, id: unknown, changes: unknown
 ipcMain.handle("db:projects:delete", async (event, id: unknown) => {
   assertTrustedRenderer(event);
   return ensureRepositories().projects.delete(parseId(id));
+});
+
+ipcMain.handle("db:notes:getAll", async (event) => {
+  assertTrustedRenderer(event);
+  return ensureRepositories().notes.getAll();
+});
+ipcMain.handle("db:notes:get", async (event, id: unknown) => {
+  assertTrustedRenderer(event);
+  return ensureRepositories().notes.get(parseId(id));
+});
+ipcMain.handle("db:notes:add", async (event, note: unknown) => {
+  assertTrustedRenderer(event);
+  return ensureRepositories().notes.add(parseNoteCreate(note));
+});
+ipcMain.handle("db:notes:update", async (event, id: unknown, changes: unknown) => {
+  assertTrustedRenderer(event);
+  return ensureRepositories().notes.update(parseId(id), parseNoteUpdate(changes));
+});
+ipcMain.handle("db:notes:delete", async (event, id: unknown) => {
+  assertTrustedRenderer(event);
+  return ensureRepositories().notes.delete(parseId(id));
 });
 
 // ── App lifecycle ───────────────────────────────────────────────────

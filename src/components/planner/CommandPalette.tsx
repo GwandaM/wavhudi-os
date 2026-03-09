@@ -12,7 +12,7 @@ import {
 import {
   Sun, LayoutGrid, Sunrise, Sunset, Plus, Search,
   AlertTriangle, ArrowUp, Minus, ArrowDown, CheckCircle2,
-  Clock, Inbox, Keyboard,
+  Clock, Inbox, Keyboard, BarChart3,
 } from 'lucide-react';
 import { formatMinutes, PRIORITY_LABELS } from '@/lib/priority';
 import type { Task, Priority } from '@/lib/db';
@@ -24,7 +24,7 @@ interface CommandPaletteProps {
   tasks: Task[];
   onTaskClick: (task: Task) => void;
   onCreateTask: () => void;
-  onSwitchView: (view: 'myday' | 'timeline') => void;
+  onSwitchView: (view: 'myday' | 'timeline' | 'review') => void;
   onStartPlanning: () => void;
   onStartShutdown: () => void;
   onShowShortcuts: () => void;
@@ -87,6 +87,11 @@ export function CommandPalette({
             <LayoutGrid className="mr-2 h-4 w-4" />
             Switch to Timeline
             <CommandShortcut>⌘2</CommandShortcut>
+          </CommandItem>
+          <CommandItem onSelect={() => { onSwitchView('review'); onOpenChange(false); }}>
+            <BarChart3 className="mr-2 h-4 w-4" />
+            Switch to Review
+            <CommandShortcut>⌘3</CommandShortcut>
           </CommandItem>
           <CommandItem onSelect={() => { onStartPlanning(); onOpenChange(false); }}>
             <Sunrise className="mr-2 h-4 w-4" />

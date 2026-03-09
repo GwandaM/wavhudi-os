@@ -81,6 +81,12 @@ export default {
           warn: "hsl(var(--capacity-warn))",
           over: "hsl(var(--capacity-over))",
         },
+        progress: {
+          "not-started": "hsl(var(--progress-not-started))",
+          "in-progress": "hsl(var(--progress-in-progress))",
+          completed: "hsl(var(--progress-completed))",
+          overdue: "hsl(var(--progress-overdue))",
+        },
       },
       borderRadius: {
         lg: "var(--radius)",

@@ -31,6 +31,7 @@ import {
   Plus,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Input } from '@/components/ui/input';
 
 interface RichTextEditorProps {
   content: string;
@@ -38,6 +39,7 @@ interface RichTextEditorProps {
   onBlur?: () => void;
   placeholder?: string;
   className?: string;
+  editorClassName?: string;
 }
 
 const TEXT_COLORS = [
@@ -61,6 +63,21 @@ const HIGHLIGHT_COLORS = [
   { label: 'Purple', value: '#e9d5ff' },
   { label: 'Orange', value: '#fed7aa' },
 ];
+
+const DEFAULT_TABLE_ROWS = 4;
+const DEFAULT_TABLE_COLS = 4;
+const MIN_TABLE_DIMENSION = 1;
+const MAX_TABLE_DIMENSION = 12;
+
+function clampTableDimension(value: string, fallback: number) {
+  const parsed = Number.parseInt(value, 10);
+
+  if (Number.isNaN(parsed)) {
+    return fallback;
+  }
+
+  return Math.min(MAX_TABLE_DIMENSION, Math.max(MIN_TABLE_DIMENSION, parsed));
+}
 
 function ToolbarButton({
   onClick,
@@ -161,6 +178,8 @@ function ColorPicker({
 
 function Toolbar({ editor }: { editor: Editor }) {
   const [showTableMenu, setShowTableMenu] = useState(false);
+  const [tableRows, setTableRows] = useState(DEFAULT_TABLE_ROWS);
+  const [tableCols, setTableCols] = useState(DEFAULT_TABLE_COLS);
   const tableMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -177,6 +196,13 @@ function Toolbar({ editor }: { editor: Editor }) {
   const currentColor = editor.getAttributes('textStyle').color;
   const currentHighlight = editor.getAttributes('highlight').color;
   const isInTable = editor.isActive('table');
+
+  const insertTable = () => {
+    editor.chain().focus().insertTable({ rows: tableRows, cols: tableCols, withHeaderRow: true }).run();
+    setTableRows(DEFAULT_TABLE_ROWS);
+    setTableCols(DEFAULT_TABLE_COLS);
+    setShowTableMenu(false);
+  };
 
   return (
     <div className="flex items-center gap-0.5 flex-wrap px-2 py-1.5 border-b border-border/40 bg-muted/30">
@@ -312,19 +338,46 @@ function Toolbar({ editor }: { editor: Editor }) {
           <TableIcon className="h-3.5 w-3.5" />
         </ToolbarButton>
         {showTableMenu && (
-          <div className="absolute top-full left-0 mt-1 z-50 bg-popover border border-border rounded-lg shadow-lg p-1 min-w-[160px]">
+          <div className="absolute top-full left-0 mt-1 z-50 bg-popover border border-border rounded-lg shadow-lg p-1 min-w-[220px]">
             {!isInTable ? (
-              <button
-                type="button"
-                className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded text-xs hover:bg-muted transition-colors"
-                onClick={() => {
-                  editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
-                  setShowTableMenu(false);
-                }}
-              >
-                <Plus className="h-3 w-3" />
-                Insert 3×3 table
-              </button>
+              <div className="space-y-2 p-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="space-y-1">
+                    <span className="block text-[11px] font-medium text-muted-foreground">
+                      Rows
+                    </span>
+                    <Input
+                      type="number"
+                      min={MIN_TABLE_DIMENSION}
+                      max={MAX_TABLE_DIMENSION}
+                      value={tableRows}
+                      onChange={(e) => setTableRows(clampTableDimension(e.target.value, DEFAULT_TABLE_ROWS))}
+                      className="h-8 px-2 text-xs"
+                    />
+                  </label>
+                  <label className="space-y-1">
+                    <span className="block text-[11px] font-medium text-muted-foreground">
+                      Columns
+                    </span>
+                    <Input
+                      type="number"
+                      min={MIN_TABLE_DIMENSION}
+                      max={MAX_TABLE_DIMENSION}
+                      value={tableCols}
+                      onChange={(e) => setTableCols(clampTableDimension(e.target.value, DEFAULT_TABLE_COLS))}
+                      className="h-8 px-2 text-xs"
+                    />
+                  </label>
+                </div>
+                <button
+                  type="button"
+                  className="w-full flex items-center justify-center gap-2 rounded text-xs font-medium hover:bg-muted transition-colors px-2.5 py-1.5"
+                  onClick={insertTable}
+                >
+                  <Plus className="h-3 w-3" />
+                  Insert {tableRows}×{tableCols} table
+                </button>
+              </div>
             ) : (
               <>
                 <button
@@ -391,7 +444,7 @@ function Toolbar({ editor }: { editor: Editor }) {
   );
 }
 
-export function RichTextEditor({ content, onChange, onBlur, placeholder, className }: RichTextEditorProps) {
+export function RichTextEditor({ content, onChange, onBlur, placeholder, className, editorClassName }: RichTextEditorProps) {
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
 
@@ -426,7 +479,10 @@ export function RichTextEditor({ content, onChange, onBlur, placeholder, classNa
     onBlur: () => onBlur?.(),
     editorProps: {
       attributes: {
-        class: 'prose prose-sm dark:prose-invert max-w-none focus:outline-none min-h-[120px] px-3 py-2',
+        class: cn(
+          'tiptap prose prose-sm dark:prose-invert max-w-none focus:outline-none min-h-[120px] px-3 py-2',
+          editorClassName
+        ),
       },
     },
   });
@@ -441,7 +497,7 @@ export function RichTextEditor({ content, onChange, onBlur, placeholder, classNa
   if (!editor) return null;
 
   return (
-    <div className={cn('rounded-lg border border-border/40 bg-card overflow-hidden transition-all focus-within:border-primary/30 focus-within:ring-1 focus-within:ring-primary/20', className)}>
+    <div className={cn('flex flex-col rounded-lg border border-border/40 bg-card overflow-hidden transition-all focus-within:border-primary/30 focus-within:ring-1 focus-within:ring-primary/20', className)}>
       <Toolbar editor={editor} />
       <EditorContent editor={editor} />
     </div>

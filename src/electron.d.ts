@@ -1,6 +1,7 @@
 import type {
   PlannerDbBridge,
   PlannerJournalBridge,
+  PlannerNotesBridge,
   PlannerProjectBridge,
   PlannerSettingsBridge,
 } from "@/lib/db";
@@ -16,6 +17,7 @@ export interface ElectronAPI {
   journal: PlannerJournalBridge;
   settings: PlannerSettingsBridge;
   projects: PlannerProjectBridge;
+  notes: PlannerNotesBridge;
 }
 
 declare global {

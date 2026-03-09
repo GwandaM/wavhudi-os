@@ -13,6 +13,8 @@ interface DayColumnProps {
   date: Date;
   tasks: Task[];
   onTaskClick: (task: Task) => void;
+  onTaskToggleComplete?: (task: Task) => void | Promise<void>;
+  onTaskDelete?: (task: Task) => void | Promise<void>;
   onAddTask?: (title: string, date: string, priority?: Priority, estimated_minutes?: number | null) => void;
   projects?: Project[];
 }
@@ -24,7 +26,7 @@ function getDayLabel(date: Date): string {
   return format(date, 'EEEE');
 }
 
-export function DayColumn({ date, tasks, onTaskClick, onAddTask, projects }: DayColumnProps) {
+export function DayColumn({ date, tasks, onTaskClick, onTaskToggleComplete, onTaskDelete, onAddTask, projects }: DayColumnProps) {
   const dateStr = format(date, 'yyyy-MM-dd');
   const today = isToday(date);
   const pastDay = isPast(startOfDay(date)) && !today;
@@ -89,6 +91,8 @@ export function DayColumn({ date, tasks, onTaskClick, onAddTask, projects }: Day
               onClick={onTaskClick}
               isMultiDay={!!task.end_date && task.end_date !== task.start_date}
               projects={projects}
+              onToggleComplete={onTaskToggleComplete}
+              onDelete={onTaskDelete}
             />
           ))}
         </SortableContext>
@@ -112,6 +116,8 @@ export function DayColumn({ date, tasks, onTaskClick, onAddTask, projects }: Day
                   onClick={onTaskClick}
                   isMultiDay={!!task.end_date && task.end_date !== task.start_date}
                   projects={projects}
+                  onToggleComplete={onTaskToggleComplete}
+                  onDelete={onTaskDelete}
                 />
               ))}
             </div>

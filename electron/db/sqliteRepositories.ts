@@ -2,8 +2,10 @@ import Database from 'better-sqlite3';
 import { safeStorage } from 'electron';
 import type {
   DailyJournal,
+  Note,
   PlannerDbBridge,
   PlannerJournalBridge,
+  PlannerNotesBridge,
   PlannerProjectBridge,
   PlannerSettingsBridge,
   Project,
@@ -77,6 +79,14 @@ interface ProjectRow {
   created_at: string;
 }
 
+interface NoteRow {
+  id: number;
+  title: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface SqliteRepositoryOptions {
   dbFilePath: string;
   migrationsDir: string;
@@ -88,6 +98,8 @@ const DEFAULT_SETTINGS: UserSettings = {
   planning_ritual_enabled: true,
   shutdown_ritual_enabled: true,
   default_view: 'myday',
+  planning_reminder_time: '09:00',
+  shutdown_reminder_time: '17:00',
 };
 const ENCRYPTION_PREFIX = '__wavhudi__:enc:v1:';
 
@@ -241,6 +253,16 @@ function toProject(row: ProjectRow): Project {
     is_archived: row.is_archived === 1,
     order_index: row.order_index,
     created_at: row.created_at,
+  };
+}
+
+function toNote(row: NoteRow): Note {
+  return {
+    id: row.id,
+    title: decryptText(row.title),
+    content: decryptText(row.content),
+    created_at: row.created_at,
+    updated_at: row.updated_at,
   };
 }
 
@@ -736,7 +758,9 @@ export class SqliteSettingsRepository implements PlannerSettingsBridge {
           'daily_capacity_minutes',
           'planning_ritual_enabled',
           'shutdown_ritual_enabled',
-          'default_view'
+          'default_view',
+          'planning_reminder_time',
+          'shutdown_reminder_time'
         )
         `
       )
@@ -762,6 +786,10 @@ export class SqliteSettingsRepository implements PlannerSettingsBridge {
           ? map.get('shutdown_ritual_enabled') === 'true'
           : DEFAULT_SETTINGS.shutdown_ritual_enabled,
       default_view: defaultView,
+      planning_reminder_time:
+        map.get('planning_reminder_time') ?? DEFAULT_SETTINGS.planning_reminder_time,
+      shutdown_reminder_time:
+        map.get('shutdown_reminder_time') ?? DEFAULT_SETTINGS.shutdown_reminder_time,
     };
   }
 
@@ -786,6 +814,8 @@ export class SqliteSettingsRepository implements PlannerSettingsBridge {
       upsert.run('planning_ritual_enabled', String(nextSettings.planning_ritual_enabled), now);
       upsert.run('shutdown_ritual_enabled', String(nextSettings.shutdown_ritual_enabled), now);
       upsert.run('default_view', nextSettings.default_view, now);
+      upsert.run('planning_reminder_time', nextSettings.planning_reminder_time, now);
+      upsert.run('shutdown_reminder_time', nextSettings.shutdown_reminder_time, now);
     });
 
     tx(updated);
@@ -896,6 +926,80 @@ export class SqliteProjectRepository implements PlannerProjectBridge {
   }
 }
 
+export class SqliteNoteRepository implements PlannerNotesBridge {
+  constructor(private readonly connection: Database.Database) {}
+
+  async getAll(): Promise<Note[]> {
+    const rows = this.connection
+      .prepare(
+        `
+        SELECT id, title, content, created_at, updated_at
+        FROM notes
+        ORDER BY updated_at DESC, id DESC
+        `
+      )
+      .all() as NoteRow[];
+
+    return rows.map((row) => toNote(row));
+  }
+
+  async get(id: number): Promise<Note | undefined> {
+    const row = this.connection
+      .prepare(
+        `
+        SELECT id, title, content, created_at, updated_at
+        FROM notes
+        WHERE id = ?
+        `
+      )
+      .get(id) as NoteRow | undefined;
+
+    return row ? toNote(row) : undefined;
+  }
+
+  async add(note: Omit<Note, 'id' | 'created_at' | 'updated_at'>): Promise<number> {
+    const now = new Date().toISOString();
+    const result = this.connection
+      .prepare(
+        `
+        INSERT INTO notes (title, content, created_at, updated_at)
+        VALUES (?, ?, ?, ?)
+        `
+      )
+      .run(encryptText(note.title), encryptText(note.content), now, now);
+
+    return Number(result.lastInsertRowid);
+  }
+
+  async update(id: number, changes: Partial<Omit<Note, 'id' | 'created_at' | 'updated_at'>>): Promise<void> {
+    const assignments: string[] = [];
+    const values: unknown[] = [];
+
+    if (changes.title !== undefined) {
+      assignments.push('title = ?');
+      values.push(encryptText(changes.title));
+    }
+    if (changes.content !== undefined) {
+      assignments.push('content = ?');
+      values.push(encryptText(changes.content));
+    }
+
+    if (assignments.length === 0) return;
+
+    assignments.push('updated_at = ?');
+    values.push(new Date().toISOString());
+    values.push(id);
+
+    this.connection
+      .prepare(`UPDATE notes SET ${assignments.join(', ')} WHERE id = ?`)
+      .run(...values);
+  }
+
+  async delete(id: number): Promise<void> {
+    this.connection.prepare('DELETE FROM notes WHERE id = ?').run(id);
+  }
+}
+
 function migrateSensitiveTextData(connection: Database.Database): void {
   if (!canUseSecureStorage()) return;
 
@@ -931,6 +1035,13 @@ function migrateSensitiveTextData(connection: Database.Database): void {
     `
     UPDATE projects
     SET description = ?
+    WHERE id = ?
+    `
+  );
+  const encryptWorkspaceNotes = connection.prepare(
+    `
+    UPDATE notes
+    SET title = ?, content = ?
     WHERE id = ?
     `
   );
@@ -979,6 +1090,18 @@ function migrateSensitiveTextData(connection: Database.Database): void {
       if (!row.description || isEncrypted(row.description)) continue;
       encryptProjects.run(encryptText(row.description), row.id);
     }
+
+    const workspaceNoteRows = connection
+      .prepare('SELECT id, title, content FROM notes')
+      .all() as Array<{ id: number; title: string; content: string }>;
+    for (const row of workspaceNoteRows) {
+      if (isEncrypted(row.title) && isEncrypted(row.content)) continue;
+      encryptWorkspaceNotes.run(
+        encryptText(row.title),
+        encryptText(row.content),
+        row.id
+      );
+    }
   });
 
   tx();
@@ -989,6 +1112,7 @@ export class SqliteRepositoryBundle {
   readonly journal: SqliteJournalRepository;
   readonly settings: SqliteSettingsRepository;
   readonly projects: SqliteProjectRepository;
+  readonly notes: SqliteNoteRepository;
   readonly connection: Database.Database;
 
   constructor(options: SqliteRepositoryOptions) {
@@ -1007,6 +1131,7 @@ export class SqliteRepositoryBundle {
     this.journal = new SqliteJournalRepository(this.connection);
     this.settings = new SqliteSettingsRepository(this.connection);
     this.projects = new SqliteProjectRepository(this.connection);
+    this.notes = new SqliteNoteRepository(this.connection);
     migrateSensitiveTextData(this.connection);
   }
 

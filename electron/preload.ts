@@ -1,8 +1,10 @@
 import { contextBridge, ipcRenderer } from "electron";
 import type {
   DailyJournal,
+  Note,
   PlannerDbBridge,
   PlannerJournalBridge,
+  PlannerNotesBridge,
   PlannerProjectBridge,
   PlannerSettingsBridge,
   Project,
@@ -45,6 +47,16 @@ const projectDb: PlannerProjectBridge = {
   delete: (id: number) => ipcRenderer.invoke("db:projects:delete", id),
 };
 
+const notesDb: PlannerNotesBridge = {
+  getAll: () => ipcRenderer.invoke("db:notes:getAll"),
+  get: (id: number) => ipcRenderer.invoke("db:notes:get", id),
+  add: (note: Omit<Note, "id" | "created_at" | "updated_at">) =>
+    ipcRenderer.invoke("db:notes:add", note),
+  update: (id: number, changes: Partial<Omit<Note, "id" | "created_at" | "updated_at">>) =>
+    ipcRenderer.invoke("db:notes:update", id, changes),
+  delete: (id: number) => ipcRenderer.invoke("db:notes:delete", id),
+};
+
 contextBridge.exposeInMainWorld("electronAPI", Object.freeze({
   platform: process.platform,
 
@@ -65,4 +77,5 @@ contextBridge.exposeInMainWorld("electronAPI", Object.freeze({
   journal: Object.freeze(journalDb),
   settings: Object.freeze(settingsDb),
   projects: Object.freeze(projectDb),
+  notes: Object.freeze(notesDb),
 }));
