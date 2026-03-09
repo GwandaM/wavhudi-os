@@ -29,8 +29,8 @@ function BacklogItem({ task, onClick }: { task: Task; onClick: (t: Task) => void
       {...attributes}
       {...listeners}
       className={cn(
-        'group flex items-center gap-2 rounded-lg px-3 py-2 cursor-pointer transition-all duration-200',
-        'hover:bg-muted/50',
+        'group flex items-center gap-2.5 rounded-md px-2.5 py-2.5 cursor-pointer transition-colors duration-150',
+        'hover:bg-muted/30',
         isDragging && 'opacity-50 shadow-lg ring-2 ring-primary/20 rotate-[0.5deg]'
       )}
       onClick={() => onClick(task)}
@@ -50,7 +50,7 @@ export function BacklogList({ tasks, onTaskClick }: BacklogListProps) {
   return (
     <div className="space-y-0.5">
       {tasks.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-8 text-muted-foreground/50">
+        <div className="flex flex-col items-center justify-center py-6 text-muted-foreground/50">
           <Inbox className="h-5 w-5 mb-1.5" />
           <p className="text-xs">No backlog tasks</p>
         </div>

@@ -38,7 +38,7 @@ export function CapacityBar({ plannedMinutes, capacityMinutes, className }: Capa
           style={{ width: `${percentage}%` }}
         />
       </div>
-      <p className="text-[10px] text-muted-foreground">
+      <p className="text-[10px] text-muted-foreground/60">
         {formatMinutes(capacityMinutes)} daily capacity
       </p>
     </div>

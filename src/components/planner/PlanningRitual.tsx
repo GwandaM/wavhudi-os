@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { format } from 'date-fns';
 import { Sunrise, ArrowRight, CheckCircle2, Calendar, Inbox, PenLine, Sparkles } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { CalendarEvents } from './CalendarEvents';
 import { DatabaseService } from '@/services/DatabaseService';
 import { formatMinutes } from '@/lib/priority';
 import type { Task, DailyJournal } from '@/lib/db';
@@ -160,10 +161,8 @@ export function PlanningRitual({
               <p className="text-sm text-muted-foreground">
                 Review your scheduled events for today. Consider blocking time for deep work.
               </p>
-              <div className="rounded-lg border bg-secondary/20 p-4 text-center text-sm text-muted-foreground">
-                Calendar integration coming soon.
-                <br />
-                Check your calendar manually before continuing.
+              <div className="rounded-lg border bg-secondary/20 p-4">
+                <CalendarEvents date={todayStr} />
               </div>
             </>
           )}

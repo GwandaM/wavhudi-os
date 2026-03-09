@@ -1,6 +1,6 @@
 // Storage-backed database layer.
-// Browser mode uses localStorage.
-// Electron mode can inject bridge objects on window to route calls to SQLite.
+// Browser mode keeps data in memory only.
+// Electron mode routes calls to the main-process SQLite bridge.
 
 export interface DailyNote {
   date: string; // yyyy-MM-dd
@@ -20,8 +20,8 @@ export interface Project {
   id: number;
   name: string;
   color: string;
-  icon?: string;
-  description?: string;
+  icon?: string | null;
+  description?: string | null;
   is_archived: boolean;
   order_index: number;
   created_at: string;
@@ -68,6 +68,8 @@ export interface UserSettings {
   planning_ritual_enabled: boolean;
   shutdown_ritual_enabled: boolean;
   default_view: 'myday' | 'week' | 'month';
+  planning_reminder_time: string; // HH:mm — when to nudge if planning not done
+  shutdown_reminder_time: string; // HH:mm — when to nudge if shutdown not done
 }
 
 export interface PlannerDbBridge {
@@ -101,88 +103,69 @@ export interface PlannerProjectBridge {
   delete(id: number): Promise<void>;
 }
 
-const STORAGE_KEY = 'daily_planner_tasks';
-const JOURNAL_STORAGE_KEY = 'daily_planner_journals';
-const SETTINGS_STORAGE_KEY = 'daily_planner_settings';
-const PROJECTS_STORAGE_KEY = 'daily_planner_projects';
+const DEFAULT_SETTINGS: UserSettings = {
+  daily_capacity_minutes: 480, // 8 hours
+  planning_ritual_enabled: true,
+  shutdown_ritual_enabled: true,
+  default_view: 'myday',
+  planning_reminder_time: '09:00',
+  shutdown_reminder_time: '17:00',
+};
+
 let nextId = 1;
 let nextJournalId = 1;
 let nextProjectId = 1;
 
-function getStorage(): Storage | null {
-  if (typeof window === 'undefined') return null;
-  try {
-    return window.localStorage;
-  } catch {
-    return null;
-  }
+let memoryTasks: Task[] = [];
+let memoryJournals: DailyJournal[] = [];
+let memoryProjects: Project[] = [];
+let memorySettings: UserSettings = { ...DEFAULT_SETTINGS };
+
+function clone<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
 }
 
-function loadTasksFromStorage(): Task[] {
-  const storage = getStorage();
-  if (!storage) return [];
-  try {
-    const raw = storage.getItem(STORAGE_KEY);
-    if (raw) {
-      const tasks: Task[] = JSON.parse(raw);
-      if (tasks.length > 0) {
-        nextId = Math.max(...tasks.map(t => t.id)) + 1;
-      }
-      return tasks;
-    }
-  } catch {
-    // ignore
-  }
-  return [];
+function getElectronApi() {
+  if (typeof window === 'undefined') return undefined;
+  return window.electronAPI;
 }
 
-function saveTasksToStorage(tasks: Task[]): void {
-  const storage = getStorage();
-  if (!storage) return;
-  storage.setItem(STORAGE_KEY, JSON.stringify(tasks));
-}
-
-const localStorageTaskDb: PlannerDbBridge = {
+const inMemoryTaskDb: PlannerDbBridge = {
   async getAll(): Promise<Task[]> {
-    return loadTasksFromStorage();
+    return clone(memoryTasks);
   },
 
   async get(id: number): Promise<Task | undefined> {
-    return loadTasksFromStorage().find(t => t.id === id);
+    const task = memoryTasks.find((item) => item.id === id);
+    return task ? clone(task) : undefined;
   },
 
   async add(task: Omit<Task, 'id'>): Promise<number> {
-    const tasks = loadTasksFromStorage();
     const id = nextId++;
-    tasks.push({ ...task, id });
-    saveTasksToStorage(tasks);
+    memoryTasks = [...memoryTasks, clone({ ...task, id })];
     return id;
   },
 
   async update(id: number, changes: Partial<Task>): Promise<void> {
-    const tasks = loadTasksFromStorage();
-    const idx = tasks.findIndex(t => t.id === id);
-    if (idx !== -1) {
-      tasks[idx] = { ...tasks[idx], ...changes };
-      saveTasksToStorage(tasks);
-    }
+    memoryTasks = memoryTasks.map((task) =>
+      task.id === id ? clone({ ...task, ...changes }) : task
+    );
   },
 
   async delete(id: number): Promise<void> {
-    const tasks = loadTasksFromStorage().filter(t => t.id !== id);
-    saveTasksToStorage(tasks);
+    memoryTasks = memoryTasks.filter((task) => task.id !== id);
   },
 
   async count(): Promise<number> {
-    return loadTasksFromStorage().length;
+    return memoryTasks.length;
   },
 };
 
 function getTaskDb(): PlannerDbBridge {
-  if (typeof window !== 'undefined' && window.wavhudiDb) {
-    return window.wavhudiDb;
+  if (getElectronApi()?.db) {
+    return getElectronApi()!.db;
   }
-  return localStorageTaskDb;
+  return inMemoryTaskDb;
 }
 
 export const db: PlannerDbBridge = {
@@ -207,47 +190,28 @@ export const db: PlannerDbBridge = {
 };
 
 // --- Journal Storage ---
-function loadJournalsFromStorage(): DailyJournal[] {
-  const storage = getStorage();
-  if (!storage) return [];
-  try {
-    const raw = storage.getItem(JOURNAL_STORAGE_KEY);
-    if (raw) {
-      const journals: DailyJournal[] = JSON.parse(raw);
-      if (journals.length > 0) {
-        nextJournalId = Math.max(...journals.map(j => j.id)) + 1;
-      }
-      return journals;
-    }
-  } catch {
-    // ignore
-  }
-  return [];
-}
-
-function saveJournalsToStorage(journals: DailyJournal[]): void {
-  const storage = getStorage();
-  if (!storage) return;
-  storage.setItem(JOURNAL_STORAGE_KEY, JSON.stringify(journals));
-}
-
-const localStorageJournalDb: PlannerJournalBridge = {
+const inMemoryJournalDb: PlannerJournalBridge = {
   async getAll(): Promise<DailyJournal[]> {
-    return loadJournalsFromStorage();
+    return clone(memoryJournals);
   },
 
   async getByDate(date: string): Promise<DailyJournal | undefined> {
-    return loadJournalsFromStorage().find(j => j.date === date);
+    const journal = memoryJournals.find((item) => item.date === date);
+    return journal ? clone(journal) : undefined;
   },
 
-  async upsert(date: string, changes: Partial<Omit<DailyJournal, 'id' | 'date' | 'created_at'>>): Promise<DailyJournal> {
-    const journals = loadJournalsFromStorage();
-    const idx = journals.findIndex(j => j.date === date);
+  async upsert(
+    date: string,
+    changes: Partial<Omit<DailyJournal, 'id' | 'date' | 'created_at'>>
+  ): Promise<DailyJournal> {
+    const idx = memoryJournals.findIndex((journal) => journal.date === date);
     if (idx !== -1) {
-      journals[idx] = { ...journals[idx], ...changes };
-      saveJournalsToStorage(journals);
-      return journals[idx];
+      memoryJournals = memoryJournals.map((journal) =>
+        journal.date === date ? clone({ ...journal, ...changes }) : journal
+      );
+      return clone(memoryJournals[idx]);
     }
+
     const newJournal: DailyJournal = {
       id: nextJournalId++,
       date,
@@ -258,17 +222,16 @@ const localStorageJournalDb: PlannerJournalBridge = {
       created_at: new Date().toISOString(),
       ...changes,
     };
-    journals.push(newJournal);
-    saveJournalsToStorage(journals);
-    return newJournal;
+    memoryJournals = [...memoryJournals, clone(newJournal)];
+    return clone(newJournal);
   },
 };
 
 function getJournalDb(): PlannerJournalBridge {
-  if (typeof window !== 'undefined' && window.wavhudiJournalDb) {
-    return window.wavhudiJournalDb;
+  if (getElectronApi()?.journal) {
+    return getElectronApi()!.journal;
   }
-  return localStorageJournalDb;
+  return inMemoryJournalDb;
 }
 
 export const journalDb: PlannerJournalBridge = {
@@ -284,42 +247,22 @@ export const journalDb: PlannerJournalBridge = {
 };
 
 // --- Settings Storage ---
-const DEFAULT_SETTINGS: UserSettings = {
-  daily_capacity_minutes: 480, // 8 hours
-  planning_ritual_enabled: true,
-  shutdown_ritual_enabled: true,
-  default_view: 'myday',
-};
-
-const localStorageSettingsDb: PlannerSettingsBridge = {
+const inMemorySettingsDb: PlannerSettingsBridge = {
   async get(): Promise<UserSettings> {
-    const storage = getStorage();
-    if (!storage) return DEFAULT_SETTINGS;
-    try {
-      const raw = storage.getItem(SETTINGS_STORAGE_KEY);
-      if (raw) return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
-    } catch {
-      // ignore
-    }
-    return DEFAULT_SETTINGS;
+    return clone(memorySettings);
   },
 
   async update(changes: Partial<UserSettings>): Promise<UserSettings> {
-    const current = await this.get();
-    const updated = { ...current, ...changes };
-    const storage = getStorage();
-    if (storage) {
-      storage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(updated));
-    }
-    return updated;
+    memorySettings = { ...memorySettings, ...changes };
+    return clone(memorySettings);
   },
 };
 
 function getSettingsDb(): PlannerSettingsBridge {
-  if (typeof window !== 'undefined' && window.wavhudiSettingsDb) {
-    return window.wavhudiSettingsDb;
+  if (getElectronApi()?.settings) {
+    return getElectronApi()!.settings;
   }
-  return localStorageSettingsDb;
+  return inMemorySettingsDb;
 }
 
 export const settingsDb: PlannerSettingsBridge = {
@@ -332,67 +275,41 @@ export const settingsDb: PlannerSettingsBridge = {
 };
 
 // --- Projects Storage ---
-function loadProjectsFromStorage(): Project[] {
-  const storage = getStorage();
-  if (!storage) return [];
-  try {
-    const raw = storage.getItem(PROJECTS_STORAGE_KEY);
-    if (raw) {
-      const projects: Project[] = JSON.parse(raw);
-      if (projects.length > 0) {
-        nextProjectId = Math.max(...projects.map(p => p.id)) + 1;
-      }
-      return projects;
-    }
-  } catch {
-    // ignore
-  }
-  return [];
-}
-
-function saveProjectsToStorage(projects: Project[]): void {
-  const storage = getStorage();
-  if (!storage) return;
-  storage.setItem(PROJECTS_STORAGE_KEY, JSON.stringify(projects));
-}
-
-const localStorageProjectDb: PlannerProjectBridge = {
+const inMemoryProjectDb: PlannerProjectBridge = {
   async getAll(): Promise<Project[]> {
-    return loadProjectsFromStorage().sort((a, b) => a.order_index - b.order_index);
+    return clone(memoryProjects).sort((a, b) => a.order_index - b.order_index);
   },
 
   async get(id: number): Promise<Project | undefined> {
-    return loadProjectsFromStorage().find(p => p.id === id);
+    const project = memoryProjects.find((item) => item.id === id);
+    return project ? clone(project) : undefined;
   },
 
   async add(project: Omit<Project, 'id' | 'created_at'>): Promise<number> {
-    const projects = loadProjectsFromStorage();
     const id = nextProjectId++;
-    projects.push({ ...project, id, created_at: new Date().toISOString() });
-    saveProjectsToStorage(projects);
+    memoryProjects = [
+      ...memoryProjects,
+      clone({ ...project, id, created_at: new Date().toISOString() }),
+    ];
     return id;
   },
 
   async update(id: number, changes: Partial<Project>): Promise<void> {
-    const projects = loadProjectsFromStorage();
-    const idx = projects.findIndex(p => p.id === id);
-    if (idx !== -1) {
-      projects[idx] = { ...projects[idx], ...changes };
-      saveProjectsToStorage(projects);
-    }
+    memoryProjects = memoryProjects.map((project) =>
+      project.id === id ? clone({ ...project, ...changes }) : project
+    );
   },
 
   async delete(id: number): Promise<void> {
-    const projects = loadProjectsFromStorage().filter(p => p.id !== id);
-    saveProjectsToStorage(projects);
+    memoryProjects = memoryProjects.filter((project) => project.id !== id);
   },
 };
 
 function getProjectDb(): PlannerProjectBridge {
-  if (typeof window !== 'undefined' && window.wavhudiProjectDb) {
-    return window.wavhudiProjectDb;
+  if (getElectronApi()?.projects) {
+    return getElectronApi()!.projects;
   }
-  return localStorageProjectDb;
+  return inMemoryProjectDb;
 }
 
 export const projectDb: PlannerProjectBridge = {

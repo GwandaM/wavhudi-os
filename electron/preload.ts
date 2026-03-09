@@ -10,7 +10,7 @@ import type {
   UserSettings,
 } from "../src/lib/db";
 
-const wavhudiDb: PlannerDbBridge = {
+const taskDb: PlannerDbBridge = {
   getAll: () => ipcRenderer.invoke("db:tasks:getAll"),
   get: (id: number) => ipcRenderer.invoke("db:tasks:get", id),
   add: (task: Omit<Task, "id">) => ipcRenderer.invoke("db:tasks:add", task),
@@ -20,7 +20,7 @@ const wavhudiDb: PlannerDbBridge = {
   count: () => ipcRenderer.invoke("db:tasks:count"),
 };
 
-const wavhudiJournalDb: PlannerJournalBridge = {
+const journalDb: PlannerJournalBridge = {
   getAll: () => ipcRenderer.invoke("db:journal:getAll"),
   getByDate: (date: string) => ipcRenderer.invoke("db:journal:getByDate", date),
   upsert: (
@@ -29,13 +29,13 @@ const wavhudiJournalDb: PlannerJournalBridge = {
   ) => ipcRenderer.invoke("db:journal:upsert", date, changes),
 };
 
-const wavhudiSettingsDb: PlannerSettingsBridge = {
+const settingsDb: PlannerSettingsBridge = {
   get: () => ipcRenderer.invoke("db:settings:get"),
   update: (changes: Partial<UserSettings>) =>
     ipcRenderer.invoke("db:settings:update", changes),
 };
 
-const wavhudiProjectDb: PlannerProjectBridge = {
+const projectDb: PlannerProjectBridge = {
   getAll: () => ipcRenderer.invoke("db:projects:getAll"),
   get: (id: number) => ipcRenderer.invoke("db:projects:get", id),
   add: (project: Omit<Project, "id" | "created_at">) =>
@@ -45,7 +45,7 @@ const wavhudiProjectDb: PlannerProjectBridge = {
   delete: (id: number) => ipcRenderer.invoke("db:projects:delete", id),
 };
 
-contextBridge.exposeInMainWorld("electronAPI", {
+contextBridge.exposeInMainWorld("electronAPI", Object.freeze({
   platform: process.platform,
 
   // Window controls
@@ -61,10 +61,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.removeListener("window:maximized-change", handler);
     };
   },
-
-});
-
-contextBridge.exposeInMainWorld("wavhudiDb", wavhudiDb);
-contextBridge.exposeInMainWorld("wavhudiJournalDb", wavhudiJournalDb);
-contextBridge.exposeInMainWorld("wavhudiSettingsDb", wavhudiSettingsDb);
-contextBridge.exposeInMainWorld("wavhudiProjectDb", wavhudiProjectDb);
+  db: Object.freeze(taskDb),
+  journal: Object.freeze(journalDb),
+  settings: Object.freeze(settingsDb),
+  projects: Object.freeze(projectDb),
+}));

@@ -35,7 +35,7 @@ export function AddTaskInput({ onAdd, placeholder = 'Add a task...' }: AddTaskIn
 
   return (
     <form onSubmit={handleSubmit} className="space-y-1">
-      <div className="flex items-center gap-2 rounded-lg border border-border/40 px-3 py-2 transition-colors focus-within:border-primary/30 hover:bg-muted/30">
+      <div className="flex items-center gap-2 rounded-md bg-muted/20 px-3 py-2.5 transition-colors focus-within:bg-muted/40 focus-within:ring-1 focus-within:ring-primary/20">
         <Plus className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
         <input
           value={value}

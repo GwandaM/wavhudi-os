@@ -1,5 +1,7 @@
 appId: com.wavhudi.os
 productName: Wavhudi OS
+asar: true
+forceCodeSigning: true
 directories:
   output: release
   buildResources: build
@@ -10,5 +12,8 @@ win:
   target: nsis
 mac:
   target: dmg
+  hardenedRuntime: true
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
 linux:
   target: AppImage

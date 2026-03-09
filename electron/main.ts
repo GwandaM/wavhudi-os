@@ -1,13 +1,91 @@
-import { app, BrowserWindow, ipcMain, shell } from "electron";
+import {
+  app,
+  BrowserWindow,
+  ipcMain,
+  shell,
+  type IpcMainInvokeEvent,
+} from "electron";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
 import { SqliteRepositoryBundle } from "./db";
+import {
+  parseDate,
+  parseId,
+  parseJournalUpdate,
+  parseProjectCreate,
+  parseProjectUpdate,
+  parseSettingsUpdate,
+  parseTaskCreate,
+  parseTaskUpdate,
+} from "./validators";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 let mainWindow: BrowserWindow | null = null;
 let repositories: SqliteRepositoryBundle | null = null;
+const packagedIndexPath = path.resolve(__dirname, "../dist/index.html");
+
+function getTrustedDevServerOrigin(): string | null {
+  const devServerUrl = process.env.VITE_DEV_SERVER_URL;
+  if (!devServerUrl || !/^https?:\/\//.test(devServerUrl)) {
+    return null;
+  }
+
+  try {
+    return new URL(devServerUrl).origin;
+  } catch {
+    return null;
+  }
+}
+
+function isAllowedAppUrl(urlString: string): boolean {
+  if (!urlString) return false;
+
+  try {
+    const url = new URL(urlString);
+    if (url.protocol === "file:") {
+      return path.resolve(fileURLToPath(url)) === packagedIndexPath;
+    }
+
+    const trustedDevServerOrigin = getTrustedDevServerOrigin();
+    return trustedDevServerOrigin !== null && url.origin === trustedDevServerOrigin;
+  } catch {
+    return false;
+  }
+}
+
+function isAllowedExternalUrl(urlString: string): boolean {
+  try {
+    const url = new URL(urlString);
+    if (url.protocol === "https:") {
+      return true;
+    }
+
+    if (
+      !app.isPackaged &&
+      url.protocol === "http:" &&
+      (url.hostname === "127.0.0.1" || url.hostname === "localhost")
+    ) {
+      return true;
+    }
+
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+function assertTrustedRenderer(event: IpcMainInvokeEvent): void {
+  if (!mainWindow || event.sender !== mainWindow.webContents) {
+    throw new Error("Rejected IPC call from unknown renderer");
+  }
+
+  const senderUrl = event.senderFrame?.url || event.sender.getURL();
+  if (!isAllowedAppUrl(senderUrl)) {
+    throw new Error(`Rejected IPC call from untrusted origin: ${senderUrl}`);
+  }
+}
 
 function resolveMigrationsDir(): string {
   const candidates = [
@@ -53,6 +131,7 @@ function createWindow() {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
     },
   });
 
@@ -63,8 +142,32 @@ function createWindow() {
 
   // Open external links in default browser
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    if (isAllowedExternalUrl(url)) {
+      void shell.openExternal(url);
+    }
     return { action: "deny" };
+  });
+
+  mainWindow.webContents.on("will-navigate", (event, url) => {
+    if (isAllowedAppUrl(url)) return;
+
+    event.preventDefault();
+    if (isAllowedExternalUrl(url)) {
+      void shell.openExternal(url);
+    }
+  });
+
+  mainWindow.webContents.on("will-redirect", (event, url) => {
+    if (isAllowedAppUrl(url)) return;
+
+    event.preventDefault();
+    if (isAllowedExternalUrl(url)) {
+      void shell.openExternal(url);
+    }
+  });
+
+  mainWindow.webContents.on("will-attach-webview", (event) => {
+    event.preventDefault();
   });
 
   // Load the app
@@ -72,7 +175,7 @@ function createWindow() {
   if (devServerUrl && /^https?:\/\//.test(devServerUrl)) {
     mainWindow.loadURL(devServerUrl);
   } else {
-    mainWindow.loadFile(path.join(__dirname, "../dist/index.html"));
+    mainWindow.loadFile(packagedIndexPath);
   }
 
   // Forward window state changes to the renderer
@@ -89,59 +192,95 @@ function createWindow() {
 }
 
 // ── Window control IPC ──────────────────────────────────────────────
-ipcMain.handle("window:minimize", () => mainWindow?.minimize());
-ipcMain.handle("window:maximize", () => {
+ipcMain.handle("window:minimize", (event) => {
+  assertTrustedRenderer(event);
+  mainWindow?.minimize();
+});
+ipcMain.handle("window:maximize", (event) => {
+  assertTrustedRenderer(event);
   if (mainWindow?.isMaximized()) {
     mainWindow.unmaximize();
   } else {
     mainWindow?.maximize();
   }
 });
-ipcMain.handle("window:close", () => mainWindow?.close());
-ipcMain.handle("window:isMaximized", () => mainWindow?.isMaximized() ?? false);
+ipcMain.handle("window:close", (event) => {
+  assertTrustedRenderer(event);
+  mainWindow?.close();
+});
+ipcMain.handle("window:isMaximized", (event) => {
+  assertTrustedRenderer(event);
+  return mainWindow?.isMaximized() ?? false;
+});
 
 // ── SQLite IPC ───────────────────────────────────────────────────────
-ipcMain.handle("db:tasks:getAll", async () => ensureRepositories().tasks.getAll());
-ipcMain.handle("db:tasks:get", async (_event, id: number) =>
-  ensureRepositories().tasks.get(id)
-);
-ipcMain.handle("db:tasks:add", async (_event, task) =>
-  ensureRepositories().tasks.add(task)
-);
-ipcMain.handle("db:tasks:update", async (_event, id: number, changes) =>
-  ensureRepositories().tasks.update(id, changes)
-);
-ipcMain.handle("db:tasks:delete", async (_event, id: number) =>
-  ensureRepositories().tasks.delete(id)
-);
-ipcMain.handle("db:tasks:count", async () => ensureRepositories().tasks.count());
+ipcMain.handle("db:tasks:getAll", async (event) => {
+  assertTrustedRenderer(event);
+  return ensureRepositories().tasks.getAll();
+});
+ipcMain.handle("db:tasks:get", async (event, id: unknown) => {
+  assertTrustedRenderer(event);
+  return ensureRepositories().tasks.get(parseId(id));
+});
+ipcMain.handle("db:tasks:add", async (event, task: unknown) => {
+  assertTrustedRenderer(event);
+  return ensureRepositories().tasks.add(parseTaskCreate(task));
+});
+ipcMain.handle("db:tasks:update", async (event, id: unknown, changes: unknown) => {
+  assertTrustedRenderer(event);
+  return ensureRepositories().tasks.update(parseId(id), parseTaskUpdate(changes));
+});
+ipcMain.handle("db:tasks:delete", async (event, id: unknown) => {
+  assertTrustedRenderer(event);
+  return ensureRepositories().tasks.delete(parseId(id));
+});
+ipcMain.handle("db:tasks:count", async (event) => {
+  assertTrustedRenderer(event);
+  return ensureRepositories().tasks.count();
+});
 
-ipcMain.handle("db:journal:getAll", async () => ensureRepositories().journal.getAll());
-ipcMain.handle("db:journal:getByDate", async (_event, date: string) =>
-  ensureRepositories().journal.getByDate(date)
-);
-ipcMain.handle("db:journal:upsert", async (_event, date: string, changes) =>
-  ensureRepositories().journal.upsert(date, changes)
-);
+ipcMain.handle("db:journal:getAll", async (event) => {
+  assertTrustedRenderer(event);
+  return ensureRepositories().journal.getAll();
+});
+ipcMain.handle("db:journal:getByDate", async (event, date: unknown) => {
+  assertTrustedRenderer(event);
+  return ensureRepositories().journal.getByDate(parseDate(date));
+});
+ipcMain.handle("db:journal:upsert", async (event, date: unknown, changes: unknown) => {
+  assertTrustedRenderer(event);
+  return ensureRepositories().journal.upsert(parseDate(date), parseJournalUpdate(changes));
+});
 
-ipcMain.handle("db:settings:get", async () => ensureRepositories().settings.get());
-ipcMain.handle("db:settings:update", async (_event, changes) =>
-  ensureRepositories().settings.update(changes)
-);
+ipcMain.handle("db:settings:get", async (event) => {
+  assertTrustedRenderer(event);
+  return ensureRepositories().settings.get();
+});
+ipcMain.handle("db:settings:update", async (event, changes: unknown) => {
+  assertTrustedRenderer(event);
+  return ensureRepositories().settings.update(parseSettingsUpdate(changes));
+});
 
-ipcMain.handle("db:projects:getAll", async () => ensureRepositories().projects.getAll());
-ipcMain.handle("db:projects:get", async (_event, id: number) =>
-  ensureRepositories().projects.get(id)
-);
-ipcMain.handle("db:projects:add", async (_event, project) =>
-  ensureRepositories().projects.add(project)
-);
-ipcMain.handle("db:projects:update", async (_event, id: number, changes) =>
-  ensureRepositories().projects.update(id, changes)
-);
-ipcMain.handle("db:projects:delete", async (_event, id: number) =>
-  ensureRepositories().projects.delete(id)
-);
+ipcMain.handle("db:projects:getAll", async (event) => {
+  assertTrustedRenderer(event);
+  return ensureRepositories().projects.getAll();
+});
+ipcMain.handle("db:projects:get", async (event, id: unknown) => {
+  assertTrustedRenderer(event);
+  return ensureRepositories().projects.get(parseId(id));
+});
+ipcMain.handle("db:projects:add", async (event, project: unknown) => {
+  assertTrustedRenderer(event);
+  return ensureRepositories().projects.add(parseProjectCreate(project));
+});
+ipcMain.handle("db:projects:update", async (event, id: unknown, changes: unknown) => {
+  assertTrustedRenderer(event);
+  return ensureRepositories().projects.update(parseId(id), parseProjectUpdate(changes));
+});
+ipcMain.handle("db:projects:delete", async (event, id: unknown) => {
+  assertTrustedRenderer(event);
+  return ensureRepositories().projects.delete(parseId(id));
+});
 
 // ── App lifecycle ───────────────────────────────────────────────────
 app.whenReady().then(() => {

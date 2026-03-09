@@ -17,9 +17,10 @@ import { useProjects } from '@/hooks/useProjects';
 import { useDailyJournal } from '@/hooks/useDailyJournal';
 import { useSettings } from '@/hooks/useSettings';
 import { useKeyboardShortcuts } from '@/hooks/useKeyboardShortcuts';
+import { useRitualReminders } from '@/hooks/useRitualReminders';
 import { DayColumn } from './DayColumn';
 import { MyDayView } from './MyDayView';
-import { OutlookEvents } from './OutlookEvents';
+import { CalendarEvents } from './CalendarEvents';
 import { BacklogList } from './BacklogList';
 import { TaskDetailPanel } from './TaskDetailPanel';
 import { AddTaskInput } from './AddTaskInput';
@@ -61,6 +62,15 @@ export function PlannerLayout() {
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [showPlanningRitual, setShowPlanningRitual] = useState(false);
   const [showShutdownRitual, setShowShutdownRitual] = useState(false);
+
+  useRitualReminders({
+    todayStr,
+    settings,
+    journal,
+    onStartPlanning: () => setShowPlanningRitual(true),
+    onStartShutdown: () => setShowShutdownRitual(true),
+  });
+
   const [showCommandPalette, setShowCommandPalette] = useState(false);
   const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
 
@@ -291,14 +301,14 @@ export function PlannerLayout() {
     >
       <div className="flex h-screen overflow-hidden">
         {/* Left Sidebar */}
-        <aside className="w-60 shrink-0 border-r border-border/40 bg-background/50 flex flex-col">
+        <aside className="w-60 shrink-0 border-r border-border/20 bg-sidebar flex flex-col">
           {/* Header */}
-          <div className="px-3 py-2 border-b border-border/40 flex items-center gap-2">
+          <div className="px-4 py-3 flex items-center gap-2">
             <Sun className="h-4 w-4 text-primary" />
             <h1 className="text-[13px] font-semibold flex-1">Daily Planner</h1>
             <button
               onClick={() => setShowCommandPalette(true)}
-              className="px-2 py-1 rounded border border-border/40 bg-muted/30 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors"
               title="Search (⌘K)"
             >
               <Search className="h-3.5 w-3.5" />
@@ -306,67 +316,67 @@ export function PlannerLayout() {
           </div>
 
           {/* View Toggle */}
-          <div className="px-3 py-2 border-b border-border/40 flex items-center gap-1">
+          <div className="px-3 pb-3 flex items-center gap-0.5">
             <button
               onClick={() => setViewMode('myday')}
               className={cn(
-                'flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors',
+                'flex-1 flex items-center justify-center gap-1 px-1.5 py-1.5 rounded-md text-[11px] font-medium transition-colors min-w-0',
                 viewMode === 'myday'
                   ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:bg-secondary'
+                  : 'text-muted-foreground hover:bg-muted/40'
               )}
             >
-              <Sun className="h-3.5 w-3.5" />
-              My Day
+              <Sun className="h-3 w-3 shrink-0" />
+              <span className="truncate">My Day</span>
             </button>
             <button
               onClick={() => setViewMode('timeline')}
               className={cn(
-                'flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors',
+                'flex-1 flex items-center justify-center gap-1 px-1.5 py-1.5 rounded-md text-[11px] font-medium transition-colors min-w-0',
                 viewMode === 'timeline'
                   ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:bg-secondary'
+                  : 'text-muted-foreground hover:bg-muted/40'
               )}
             >
-              <LayoutGrid className="h-3.5 w-3.5" />
-              Timeline
+              <LayoutGrid className="h-3 w-3 shrink-0" />
+              <span className="truncate">Timeline</span>
             </button>
             <button
               onClick={() => setViewMode('review')}
               className={cn(
-                'flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors',
+                'flex-1 flex items-center justify-center gap-1 px-1.5 py-1.5 rounded-md text-[11px] font-medium transition-colors min-w-0',
                 viewMode === 'review'
                   ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:bg-secondary'
+                  : 'text-muted-foreground hover:bg-muted/40'
               )}
             >
-              <BarChart3 className="h-3.5 w-3.5" />
-              Review
+              <BarChart3 className="h-3 w-3 shrink-0" />
+              <span className="truncate">Review</span>
             </button>
           </div>
 
           <div className="flex-1 overflow-y-auto scrollbar-thin">
             {/* Outlook Events */}
-            <div className="p-3">
+            <div className="px-4 py-3">
               <div className="flex items-center gap-2 mb-3">
-                <CalendarDays className="h-4 w-4 text-muted-foreground" />
-                <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                  Outlook Events
+                <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />
+                <h2 className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+                  Calendar
                 </h2>
               </div>
-              <OutlookEvents />
+              <CalendarEvents date={todayStr} />
             </div>
 
             {/* Projects */}
-            <div className="p-3 border-t border-border/40">
+            <div className="px-4 py-3">
               <div className="flex items-center gap-2 mb-3">
-                <FolderOpen className="h-4 w-4 text-muted-foreground" />
-                <h2 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex-1">
+                <FolderOpen className="h-3.5 w-3.5 text-muted-foreground" />
+                <h2 className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide flex-1">
                   Projects
                 </h2>
                 <button
                   onClick={() => setShowNewProject(true)}
-                  className="rounded p-0.5 hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground"
+                  className="rounded p-0.5 hover:bg-muted/40 transition-colors text-muted-foreground hover:text-foreground"
                   title="New project"
                 >
                   <Plus className="h-3.5 w-3.5" />
@@ -376,10 +386,10 @@ export function PlannerLayout() {
                 <button
                   onClick={() => setFilterProjectId(null)}
                   className={cn(
-                    'w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs transition-colors',
+                    'w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-[13px] transition-colors',
                     filterProjectId === null
-                      ? 'bg-secondary font-medium'
-                      : 'hover:bg-secondary/60 text-muted-foreground'
+                      ? 'bg-muted/50 font-medium text-foreground'
+                      : 'hover:bg-muted/30 text-muted-foreground'
                   )}
                 >
                   All tasks
@@ -391,10 +401,10 @@ export function PlannerLayout() {
                       filterProjectId === project.id ? null : project.id
                     )}
                     className={cn(
-                      'w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs transition-colors',
+                      'w-full flex items-center gap-2 px-2.5 py-2 rounded-md text-[13px] transition-colors',
                       filterProjectId === project.id
-                        ? 'bg-secondary font-medium'
-                        : 'hover:bg-secondary/60 text-muted-foreground'
+                        ? 'bg-muted/50 font-medium text-foreground'
+                        : 'hover:bg-muted/30 text-muted-foreground'
                     )}
                   >
                     <span
@@ -431,18 +441,18 @@ export function PlannerLayout() {
                       if (!newProjectName.trim()) setShowNewProject(false);
                     }}
                     placeholder="Project name..."
-                    className="w-full text-xs rounded border bg-card px-2 py-1.5 outline-none focus:border-primary/30"
+                    className="w-full text-[13px] rounded-md bg-muted/30 px-2.5 py-2 outline-none focus:ring-1 focus:ring-primary/30 border-0"
                   />
                 </form>
               )}
             </div>
 
             {/* Backlog */}
-            <div className="p-3 border-t border-border/40">
-              <div className="flex items-center gap-2 mb-2">
+            <div className="px-4 py-3">
+              <div className="flex items-center gap-2 mb-3">
                 <InboxIcon className="h-3.5 w-3.5 text-muted-foreground" />
-                <h2 className="text-[13px] font-medium flex-1">
-                  Task Backlog
+                <h2 className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide flex-1">
+                  Backlog
                 </h2>
                 <span className="text-[11px] text-muted-foreground">{backlogTasks.length}</span>
               </div>
@@ -484,7 +494,7 @@ export function PlannerLayout() {
             </div>
           ) : (
             <>
-              <div className="border-b px-3 py-2 flex items-center justify-between gap-4">
+              <div className="border-b border-border/20 px-4 py-3 flex items-center justify-between gap-4">
                 <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide">
                   {format(today, 'EEEE, MMMM d, yyyy')}
                 </h2>

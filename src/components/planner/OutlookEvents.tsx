@@ -15,7 +15,7 @@ export function OutlookEvents() {
       {mockEvents.map((event) => (
         <div
           key={event.id}
-          className="flex items-start gap-3 rounded-lg border bg-card px-3 py-2.5 transition-colors hover:bg-secondary/50"
+          className="flex items-start gap-3 rounded-md px-3 py-3 transition-colors hover:bg-muted/30"
         >
           <Video className="h-4 w-4 mt-0.5 shrink-0 text-accent-foreground" />
           <div className="flex-1 min-w-0">

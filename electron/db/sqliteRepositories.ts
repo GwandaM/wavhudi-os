@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import { safeStorage } from 'electron';
 import type {
   DailyJournal,
   PlannerDbBridge,
@@ -88,6 +89,55 @@ const DEFAULT_SETTINGS: UserSettings = {
   shutdown_ritual_enabled: true,
   default_view: 'myday',
 };
+const ENCRYPTION_PREFIX = '__wavhudi__:enc:v1:';
+
+function canUseSecureStorage(): boolean {
+  try {
+    return safeStorage.isEncryptionAvailable();
+  } catch {
+    return false;
+  }
+}
+
+function encryptText(value: string): string {
+  if (!value || !canUseSecureStorage() || value.startsWith(ENCRYPTION_PREFIX)) {
+    return value;
+  }
+
+  return `${ENCRYPTION_PREFIX}${safeStorage
+    .encryptString(value)
+    .toString('base64')}`;
+}
+
+function encryptNullableText(value: string | null | undefined): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  return encryptText(value);
+}
+
+function decryptText(value: string): string {
+  if (!value || !value.startsWith(ENCRYPTION_PREFIX) || !canUseSecureStorage()) {
+    return value;
+  }
+
+  try {
+    return safeStorage.decryptString(
+      Buffer.from(value.slice(ENCRYPTION_PREFIX.length), 'base64')
+    );
+  } catch {
+    return value;
+  }
+}
+
+function decryptNullableText(value: string | null | undefined): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  return decryptText(value);
+}
+
+function isEncrypted(value: string | null | undefined): boolean {
+  return Boolean(value && value.startsWith(ENCRYPTION_PREFIX));
+}
 
 function coerceTaskStatus(status: string): Task['status'] {
   if (status === 'backlog' || status === 'scheduled' || status === 'completed') {
@@ -135,7 +185,7 @@ function normalizeTags(tags: string[]): string[] {
 function toSubtask(row: SubtaskRow): Subtask {
   return {
     id: row.id,
-    title: row.title,
+    title: decryptText(row.title),
     completed: row.completed === 1,
     order_index: row.order_index,
   };
@@ -149,8 +199,8 @@ function toTask(
 ): Task {
   return {
     id: row.id,
-    title: row.title,
-    description: row.description,
+    title: decryptText(row.title),
+    description: decryptText(row.description),
     daily_notes: dailyNotes,
     status: coerceTaskStatus(row.status),
     start_date: row.start_date,
@@ -173,8 +223,8 @@ function toDailyJournal(row: JournalRow): DailyJournal {
   return {
     id: row.id,
     date: row.journal_date,
-    intention: row.intention,
-    reflection: row.reflection,
+    intention: decryptText(row.intention),
+    reflection: decryptText(row.reflection),
     planning_completed: row.planning_completed === 1,
     shutdown_completed: row.shutdown_completed === 1,
     created_at: row.created_at,
@@ -187,7 +237,7 @@ function toProject(row: ProjectRow): Project {
     name: row.name,
     color: row.color,
     icon: row.icon ?? undefined,
-    description: row.description ?? undefined,
+    description: decryptNullableText(row.description) ?? undefined,
     is_archived: row.is_archived === 1,
     order_index: row.order_index,
     created_at: row.created_at,
@@ -211,10 +261,11 @@ export class SqliteTaskRepository implements PlannerDbBridge {
     const noteMap = new Map<number, Array<{ date: string; content: string }>>();
     for (const note of noteRows) {
       const bucket = noteMap.get(note.task_id);
+      const value = { date: note.note_date, content: decryptText(note.content) };
       if (bucket) {
-        bucket.push({ date: note.note_date, content: note.content });
+        bucket.push(value);
       } else {
-        noteMap.set(note.task_id, [{ date: note.note_date, content: note.content }]);
+        noteMap.set(note.task_id, [value]);
       }
     }
     return noteMap;
@@ -280,7 +331,7 @@ export class SqliteTaskRepository implements PlannerDbBridge {
       .prepare('DELETE FROM task_daily_notes WHERE task_id = ?')
       .run(taskId);
     for (const note of notes) {
-      insertNote.run(taskId, note.date, note.content, now, now);
+      insertNote.run(taskId, note.date, encryptText(note.content), now, now);
     }
   }
 
@@ -297,7 +348,7 @@ export class SqliteTaskRepository implements PlannerDbBridge {
       const subtask = subtasks[i];
       insertSubtask.run(
         taskId,
-        subtask.title,
+        encryptText(subtask.title),
         subtask.completed ? 1 : 0,
         subtask.order_index ?? i,
         now,
@@ -418,7 +469,7 @@ export class SqliteTaskRepository implements PlannerDbBridge {
 
     return toTask(
       row,
-      notes.map((note) => ({ date: note.note_date, content: note.content })),
+      notes.map((note) => ({ date: note.note_date, content: decryptText(note.content) })),
       subtasks.map((item) => toSubtask(item)),
       tags.map((item) => item.tag_name)
     );
@@ -439,8 +490,8 @@ export class SqliteTaskRepository implements PlannerDbBridge {
     const now = new Date().toISOString();
     const tx = this.connection.transaction((input: Omit<Task, 'id'>) => {
       const result = insertTask.run(
-        input.title,
-        input.description,
+        encryptText(input.title),
+        encryptText(input.description),
         input.status,
         input.start_date,
         input.end_date,
@@ -473,11 +524,11 @@ export class SqliteTaskRepository implements PlannerDbBridge {
 
       if (patch.title !== undefined) {
         assignments.push('title = ?');
-        values.push(patch.title);
+        values.push(encryptText(patch.title));
       }
       if (patch.description !== undefined) {
         assignments.push('description = ?');
-        values.push(patch.description);
+        values.push(encryptText(patch.description));
       }
       if (patch.status !== undefined) {
         assignments.push('status = ?');
@@ -629,8 +680,8 @@ export class SqliteJournalRepository implements PlannerJournalBridge {
           `
         )
         .run(
-          next.intention,
-          next.reflection,
+          encryptText(next.intention),
+          encryptText(next.reflection),
           next.planning_completed ? 1 : 0,
           next.shutdown_completed ? 1 : 0,
           now,
@@ -652,8 +703,8 @@ export class SqliteJournalRepository implements PlannerJournalBridge {
       )
       .run(
         date,
-        changes.intention ?? '',
-        changes.reflection ?? '',
+        encryptText(changes.intention ?? ''),
+        encryptText(changes.reflection ?? ''),
         changes.planning_completed ? 1 : 0,
         changes.shutdown_completed ? 1 : 0,
         now,
@@ -790,7 +841,7 @@ export class SqliteProjectRepository implements PlannerProjectBridge {
         project.name,
         project.color,
         project.icon ?? null,
-        project.description ?? null,
+        encryptNullableText(project.description) ?? null,
         project.is_archived ? 1 : 0,
         project.order_index,
         now,
@@ -818,7 +869,7 @@ export class SqliteProjectRepository implements PlannerProjectBridge {
     }
     if (changes.description !== undefined) {
       assignments.push('description = ?');
-      values.push(changes.description ?? null);
+      values.push(encryptNullableText(changes.description) ?? null);
     }
     if (changes.is_archived !== undefined) {
       assignments.push('is_archived = ?');
@@ -845,6 +896,94 @@ export class SqliteProjectRepository implements PlannerProjectBridge {
   }
 }
 
+function migrateSensitiveTextData(connection: Database.Database): void {
+  if (!canUseSecureStorage()) return;
+
+  const encryptTasks = connection.prepare(
+    `
+    UPDATE tasks
+    SET title = ?, description = ?
+    WHERE id = ?
+    `
+  );
+  const encryptNotes = connection.prepare(
+    `
+    UPDATE task_daily_notes
+    SET content = ?
+    WHERE id = ?
+    `
+  );
+  const encryptSubtasks = connection.prepare(
+    `
+    UPDATE subtasks
+    SET title = ?
+    WHERE id = ?
+    `
+  );
+  const encryptJournals = connection.prepare(
+    `
+    UPDATE daily_journals
+    SET intention = ?, reflection = ?
+    WHERE id = ?
+    `
+  );
+  const encryptProjects = connection.prepare(
+    `
+    UPDATE projects
+    SET description = ?
+    WHERE id = ?
+    `
+  );
+
+  const tx = connection.transaction(() => {
+    const taskRows = connection
+      .prepare('SELECT id, title, description FROM tasks')
+      .all() as Array<{ id: number; title: string; description: string }>;
+    for (const row of taskRows) {
+      if (isEncrypted(row.title) && isEncrypted(row.description)) continue;
+      encryptTasks.run(encryptText(row.title), encryptText(row.description), row.id);
+    }
+
+    const noteRows = connection
+      .prepare('SELECT id, content FROM task_daily_notes')
+      .all() as Array<{ id: number; content: string }>;
+    for (const row of noteRows) {
+      if (isEncrypted(row.content)) continue;
+      encryptNotes.run(encryptText(row.content), row.id);
+    }
+
+    const subtaskRows = connection
+      .prepare('SELECT id, title FROM subtasks')
+      .all() as Array<{ id: number; title: string }>;
+    for (const row of subtaskRows) {
+      if (isEncrypted(row.title)) continue;
+      encryptSubtasks.run(encryptText(row.title), row.id);
+    }
+
+    const journalRows = connection
+      .prepare('SELECT id, intention, reflection FROM daily_journals')
+      .all() as Array<{ id: number; intention: string; reflection: string }>;
+    for (const row of journalRows) {
+      if (isEncrypted(row.intention) && isEncrypted(row.reflection)) continue;
+      encryptJournals.run(
+        encryptText(row.intention),
+        encryptText(row.reflection),
+        row.id
+      );
+    }
+
+    const projectRows = connection
+      .prepare('SELECT id, description FROM projects WHERE description IS NOT NULL')
+      .all() as Array<{ id: number; description: string | null }>;
+    for (const row of projectRows) {
+      if (!row.description || isEncrypted(row.description)) continue;
+      encryptProjects.run(encryptText(row.description), row.id);
+    }
+  });
+
+  tx();
+}
+
 export class SqliteRepositoryBundle {
   readonly tasks: SqliteTaskRepository;
   readonly journal: SqliteJournalRepository;
@@ -868,6 +1007,7 @@ export class SqliteRepositoryBundle {
     this.journal = new SqliteJournalRepository(this.connection);
     this.settings = new SqliteSettingsRepository(this.connection);
     this.projects = new SqliteProjectRepository(this.connection);
+    migrateSensitiveTextData(this.connection);
   }
 
   close(): void {

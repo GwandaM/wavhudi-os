@@ -54,14 +54,14 @@ export function MyDayView({
   const isEvening = hour >= 17;
 
   return (
-    <div className="max-w-2xl mx-auto py-6 px-4 space-y-6">
+    <div className="max-w-2xl mx-auto py-8 px-6 space-y-6">
       {/* Header */}
       <div className="space-y-1">
         <div className="flex items-center gap-2">
           <Sun className="h-4 w-4 text-primary" />
-          <h1 className="text-lg font-semibold">My Day</h1>
+          <h1 className="text-lg font-medium">My Day</h1>
         </div>
-        <p className="text-sm text-muted-foreground">
+        <p className="text-[13px] text-muted-foreground">
           {format(today, 'EEEE, MMMM d, yyyy')}
         </p>
       </div>
@@ -70,11 +70,11 @@ export function MyDayView({
       {!isPlanningDone && (
         <button
           onClick={onStartPlanning}
-          className="w-full flex items-center gap-3 rounded-xl border-2 border-dashed border-primary/30 bg-primary/5 p-4 transition-colors hover:border-primary/50 hover:bg-primary/10"
+          className="w-full flex items-center gap-3 rounded-lg border border-primary/20 bg-primary/5 p-4 transition-colors hover:bg-primary/10"
         >
           <Sunrise className="h-5 w-5 text-primary" />
           <div className="text-left">
-            <p className="text-sm font-semibold text-primary">Start your morning planning</p>
+            <p className="text-sm font-medium text-primary">Start your morning planning</p>
             <p className="text-xs text-muted-foreground">Review yesterday, plan today, set your intention</p>
           </div>
         </button>
@@ -83,11 +83,11 @@ export function MyDayView({
       {isPlanningDone && isEvening && !isShutdownDone && (
         <button
           onClick={onStartShutdown}
-          className="w-full flex items-center gap-3 rounded-xl border-2 border-dashed border-accent-foreground/30 bg-accent/50 p-4 transition-colors hover:border-accent-foreground/50"
+          className="w-full flex items-center gap-3 rounded-lg border border-border/30 bg-muted/30 p-4 transition-colors hover:bg-muted/50"
         >
-          <Sunset className="h-5 w-5 text-accent-foreground" />
+          <Sunset className="h-5 w-5 text-muted-foreground" />
           <div className="text-left">
-            <p className="text-sm font-semibold text-accent-foreground">Time for shutdown</p>
+            <p className="text-sm font-medium">Time for shutdown</p>
             <p className="text-xs text-muted-foreground">Review progress, handle incomplete tasks, reflect</p>
           </div>
         </button>
@@ -103,8 +103,8 @@ export function MyDayView({
       <div
         ref={setNodeRef}
         className={cn(
-          'space-y-2 min-h-[200px] rounded-xl p-3 transition-colors',
-          isOver && 'bg-primary/5 border border-primary/20'
+          'space-y-1 min-h-[200px] transition-colors',
+          isOver && 'bg-primary/5 rounded-lg'
         )}
       >
         <SortableContext items={taskIds} strategy={verticalListSortingStrategy}>
@@ -120,7 +120,7 @@ export function MyDayView({
         </SortableContext>
 
         {incompleteTasks.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-12 text-muted-foreground/50">
+          <div className="flex flex-col items-center justify-center py-12 text-muted-foreground/40">
             <Sun className="h-8 w-8 mb-2" />
             <p className="text-sm">No tasks for today</p>
             <p className="text-xs">Add a task or drag from the backlog</p>
@@ -133,8 +133,8 @@ export function MyDayView({
 
       {/* Completed section */}
       {completedTasks.length > 0 && (
-        <div className="space-y-2 pt-4 border-t">
-          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+        <div className="space-y-1 pt-4 border-t border-border/20">
+          <h3 className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
             Completed ({completedTasks.length})
           </h3>
           {completedTasks.map((task) => (
@@ -151,7 +151,7 @@ export function MyDayView({
 
       {/* Day summary */}
       {tasks.length > 0 && (
-        <div className="text-center text-xs text-muted-foreground pt-2">
+        <div className="text-center text-xs text-muted-foreground/60 pt-2">
           {incompleteTasks.length} remaining · {completedTasks.length} done
           {plannedMinutes > 0 && ` · ${formatMinutes(plannedMinutes)} planned`}
         </div>
