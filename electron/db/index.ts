@@ -1,5 +1,6 @@
 export { runMigrations, type MigrationConfig } from './migrate';
 export {
+  SqliteAppConfigRepository,
   SqliteJournalRepository,
   SqliteNoteRepository,
   SqliteProjectRepository,

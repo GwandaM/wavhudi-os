@@ -23,6 +23,7 @@ import { DayColumn } from './DayColumn';
 import { MyDayView } from './MyDayView';
 import { MonthGridView } from './MonthGridView';
 import { CalendarEvents } from './CalendarEvents';
+import { OutlookEvents } from './OutlookEvents';
 import { BacklogList } from './BacklogList';
 import { TaskDetailPanel } from './TaskDetailPanel';
 import { AddTaskInput } from './AddTaskInput';
@@ -453,6 +454,7 @@ export function PlannerLayout() {
               open={sidebarSections.calendar}
               onOpenChange={(open) => setSidebarSectionOpen('calendar', open)}
             >
+              <OutlookEvents date={todayStr} />
               <CalendarEvents date={todayStr} />
             </SidebarSection>
 

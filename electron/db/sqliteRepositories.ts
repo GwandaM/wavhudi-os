@@ -1107,12 +1107,37 @@ function migrateSensitiveTextData(connection: Database.Database): void {
   tx();
 }
 
+export class SqliteAppConfigRepository {
+  constructor(private readonly connection: Database.Database) {}
+
+  get(key: string): string | null {
+    const row = this.connection
+      .prepare('SELECT value FROM app_settings WHERE key = ?')
+      .get(key) as { value: string } | undefined;
+    return row?.value ?? null;
+  }
+
+  set(key: string, value: string): void {
+    const now = new Date().toISOString();
+    this.connection
+      .prepare(`
+        INSERT INTO app_settings (key, value, updated_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(key) DO UPDATE SET
+          value = excluded.value,
+          updated_at = excluded.updated_at
+      `)
+      .run(key, value, now);
+  }
+}
+
 export class SqliteRepositoryBundle {
   readonly tasks: SqliteTaskRepository;
   readonly journal: SqliteJournalRepository;
   readonly settings: SqliteSettingsRepository;
   readonly projects: SqliteProjectRepository;
   readonly notes: SqliteNoteRepository;
+  readonly appConfig: SqliteAppConfigRepository;
   readonly connection: Database.Database;
 
   constructor(options: SqliteRepositoryOptions) {
@@ -1132,6 +1157,7 @@ export class SqliteRepositoryBundle {
     this.settings = new SqliteSettingsRepository(this.connection);
     this.projects = new SqliteProjectRepository(this.connection);
     this.notes = new SqliteNoteRepository(this.connection);
+    this.appConfig = new SqliteAppConfigRepository(this.connection);
     migrateSensitiveTextData(this.connection);
   }
 

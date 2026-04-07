@@ -9,6 +9,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { existsSync } from "node:fs";
 import { SqliteRepositoryBundle } from "./db";
+import { OutlookService } from "./outlook";
 import {
   parseDate,
   parseId,
@@ -18,6 +19,7 @@ import {
   parseProjectCreate,
   parseProjectUpdate,
   parseSettingsUpdate,
+  parseString,
   parseTaskCreate,
   parseTaskUpdate,
 } from "./validators";
@@ -26,6 +28,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 let mainWindow: BrowserWindow | null = null;
 let repositories: SqliteRepositoryBundle | null = null;
+let outlookService: OutlookService | null = null;
 const packagedIndexPath = path.resolve(__dirname, "../dist/index.html");
 
 function getTrustedDevServerOrigin(): string | null {
@@ -114,6 +117,16 @@ function ensureRepositories(): SqliteRepositoryBundle {
   });
 
   return repositories;
+}
+
+function ensureOutlookService(): OutlookService {
+  if (outlookService) return outlookService;
+  const repos = ensureRepositories();
+  outlookService = new OutlookService(
+    (key) => repos.appConfig.get(key),
+    (key, value) => repos.appConfig.set(key, value),
+  );
+  return outlookService;
 }
 
 function createWindow() {
@@ -303,6 +316,51 @@ ipcMain.handle("db:notes:update", async (event, id: unknown, changes: unknown) =
 ipcMain.handle("db:notes:delete", async (event, id: unknown) => {
   assertTrustedRenderer(event);
   return ensureRepositories().notes.delete(parseId(id));
+});
+
+// ── App config IPC ──────────────────────────────────────────────────
+ipcMain.handle("app:getConfig", async (event, key: unknown) => {
+  assertTrustedRenderer(event);
+  return ensureRepositories().appConfig.get(parseString(key));
+});
+
+ipcMain.handle("app:setConfig", async (event, key: unknown, value: unknown) => {
+  assertTrustedRenderer(event);
+  ensureRepositories().appConfig.set(parseString(key), parseString(value, 10_000));
+});
+
+// ── Outlook IPC ──────────────────────────────────────────────────────
+ipcMain.handle("outlook:getConfig", (event) => {
+  assertTrustedRenderer(event);
+  return ensureOutlookService().getOutlookConfig();
+});
+
+ipcMain.handle("outlook:setConfig", (event, clientId: unknown, tenantId: unknown) => {
+  assertTrustedRenderer(event);
+  ensureOutlookService().setOutlookConfig({
+    clientId: parseString(clientId, 200),
+    tenantId: parseString(tenantId, 200),
+  });
+});
+
+ipcMain.handle("outlook:getStatus", (event) => {
+  assertTrustedRenderer(event);
+  return ensureOutlookService().getTokenStatus();
+});
+
+ipcMain.handle("outlook:auth", async (event) => {
+  assertTrustedRenderer(event);
+  return ensureOutlookService().startAuth();
+});
+
+ipcMain.handle("outlook:getCalendarEvents", async (event, date: unknown) => {
+  assertTrustedRenderer(event);
+  return ensureOutlookService().getCalendarEvents(parseDate(date));
+});
+
+ipcMain.handle("outlook:disconnect", (event) => {
+  assertTrustedRenderer(event);
+  ensureOutlookService().disconnect();
 });
 
 // ── App lifecycle ───────────────────────────────────────────────────

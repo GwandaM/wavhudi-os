@@ -236,3 +236,7 @@ export function parseNoteCreate(value: unknown) {
 export function parseNoteUpdate(value: unknown) {
   return noteUpdateSchema.parse(value);
 }
+
+export function parseString(value: unknown, maxLength = 1_000): string {
+  return z.string().max(maxLength).parse(value);
+}

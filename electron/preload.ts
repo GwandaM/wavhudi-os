@@ -11,6 +11,7 @@ import type {
   Task,
   UserSettings,
 } from "../src/lib/db";
+import type { OutlookCalendarEvent, OutlookConfig } from "./outlook";
 
 const taskDb: PlannerDbBridge = {
   getAll: () => ipcRenderer.invoke("db:tasks:getAll"),
@@ -57,6 +58,28 @@ const notesDb: PlannerNotesBridge = {
   delete: (id: number) => ipcRenderer.invoke("db:notes:delete", id),
 };
 
+const appConfig = {
+  get: (key: string): Promise<string | null> =>
+    ipcRenderer.invoke("app:getConfig", key),
+  set: (key: string, value: string): Promise<void> =>
+    ipcRenderer.invoke("app:setConfig", key, value),
+};
+
+const outlook = {
+  getConfig: (): Promise<OutlookConfig | null> =>
+    ipcRenderer.invoke("outlook:getConfig"),
+  setConfig: (config: OutlookConfig): Promise<void> =>
+    ipcRenderer.invoke("outlook:setConfig", config.clientId, config.tenantId),
+  getStatus: (): Promise<{ connected: boolean; expiresAt?: number }> =>
+    ipcRenderer.invoke("outlook:getStatus"),
+  auth: (): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke("outlook:auth"),
+  getCalendarEvents: (date: string): Promise<OutlookCalendarEvent[]> =>
+    ipcRenderer.invoke("outlook:getCalendarEvents", date),
+  disconnect: (): Promise<void> =>
+    ipcRenderer.invoke("outlook:disconnect"),
+};
+
 contextBridge.exposeInMainWorld("electronAPI", Object.freeze({
   platform: process.platform,
 
@@ -78,4 +101,6 @@ contextBridge.exposeInMainWorld("electronAPI", Object.freeze({
   settings: Object.freeze(settingsDb),
   projects: Object.freeze(projectDb),
   notes: Object.freeze(notesDb),
+  appConfig: Object.freeze(appConfig),
+  outlook: Object.freeze(outlook),
 }));
