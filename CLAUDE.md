@@ -67,10 +67,18 @@ The `Task` interface in `src/lib/db.ts` is the core data model:
 - Setup file: `src/test/setup.ts` (includes `@testing-library/jest-dom` matchers and `matchMedia` polyfill)
 - Test files: `src/**/*.{test,spec}.{ts,tsx}`
 
-### Planned Migrations (TODOs in code)
+### SQLite Migration Rules
 
-- Replace localStorage with **better-sqlite3 IPC** for a native Electron build (`db.ts`, `DatabaseService.ts`)
-- Connect `OutlookEvents.tsx` to **Electron IPC for local Outlook COM sync**
+Migrations live in `electron/db/migrations/` and are applied automatically on startup via `electron/db/migrate.ts`. The `schema_migrations` table tracks which have run — **each migration runs exactly once, never again**.
+
+**Rules you must follow when writing a new migration:**
+
+- **Adding** columns or tables: always safe — use `ALTER TABLE … ADD COLUMN` or `CREATE TABLE IF NOT EXISTS`.
+- **Renaming or dropping** a column: SQLite does not support `ALTER TABLE … DROP/RENAME COLUMN` in older versions. Instead, add a new column, copy the data in the same migration, and leave the old column in place (or do a full table-recreate-and-copy if you must remove it).
+- **Never modify an existing migration file** that has already been committed. If you need to fix something, write a new migration.
+- Name migrations sequentially: `0001_…`, `0002_…`, `0003_…` — the runner sorts by filename.
+
+The user's database (`%APPDATA%\Wavhudi OS\planner.db`) is **outside the install directory** and is never touched by the installer. Updates ship new app code; migrations upgrade the schema in place. Existing data always survives an update as long as migrations are additive.
 
 ## Conventions
 

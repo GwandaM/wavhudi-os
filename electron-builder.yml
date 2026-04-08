@@ -1,7 +1,9 @@
 appId: com.wavhudi.os
 productName: Wavhudi OS
 asar: true
-forceCodeSigning: true
+# Set WIN_CSC_LINK + WIN_CSC_KEY_PASSWORD env vars (or CSC_LINK + CSC_KEY_PASSWORD) to enable signing.
+# For internal/dev builds without a cert, leave these unset and forceCodeSigning stays false.
+forceCodeSigning: false
 directories:
   output: release
   buildResources: build
