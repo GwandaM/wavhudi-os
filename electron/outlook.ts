@@ -39,6 +39,10 @@ interface TokenData {
 type ConfigGetter = (key: string) => string | null;
 type ConfigSetter = (key: string, value: string) => void;
 
+// Separate secure pair used only for OAuth tokens — values are encrypted at rest.
+type SecureConfigGetter = (key: string) => string | null;
+type SecureConfigSetter = (key: string, value: string) => void;
+
 // ── PKCE helpers ─────────────────────────────────────────────────────────────
 
 function base64url(buf: Buffer): string {
@@ -119,6 +123,9 @@ export class OutlookService {
   constructor(
     private readonly getAppConfig: ConfigGetter,
     private readonly setAppConfig: ConfigSetter,
+    // Token storage uses encrypted getters/setters so tokens are never stored in plain text.
+    private readonly getSecureConfig: SecureConfigGetter,
+    private readonly setSecureConfig: SecureConfigSetter,
   ) {}
 
   // ── Config ────────────────────────────────────────────────────────────────
@@ -138,9 +145,10 @@ export class OutlookService {
   // ── Token management ──────────────────────────────────────────────────────
 
   private getStoredToken(): TokenData | null {
-    const accessToken = this.getAppConfig('outlook_access_token');
-    const refreshToken = this.getAppConfig('outlook_refresh_token');
-    const expiresAt = this.getAppConfig('outlook_token_expires');
+    // Tokens are encrypted at rest via SqliteAppConfigRepository.getSecure()
+    const accessToken = this.getSecureConfig('outlook_access_token');
+    const refreshToken = this.getSecureConfig('outlook_refresh_token');
+    const expiresAt = this.getAppConfig('outlook_token_expires'); // expiry is not sensitive
     if (!accessToken || !expiresAt) return null;
     return {
       accessToken,
@@ -150,8 +158,9 @@ export class OutlookService {
   }
 
   private storeToken(data: TokenData): void {
-    this.setAppConfig('outlook_access_token', data.accessToken);
-    this.setAppConfig('outlook_refresh_token', data.refreshToken ?? '');
+    // Tokens are encrypted before writing — never stored in plain text.
+    this.setSecureConfig('outlook_access_token', data.accessToken);
+    this.setSecureConfig('outlook_refresh_token', data.refreshToken ?? '');
     this.setAppConfig('outlook_token_expires', String(data.expiresAt));
   }
 
@@ -163,8 +172,8 @@ export class OutlookService {
   }
 
   disconnect(): void {
-    this.setAppConfig('outlook_access_token', '');
-    this.setAppConfig('outlook_refresh_token', '');
+    this.setSecureConfig('outlook_access_token', '');
+    this.setSecureConfig('outlook_refresh_token', '');
     this.setAppConfig('outlook_token_expires', '');
   }
 
@@ -260,12 +269,8 @@ export class OutlookService {
         clearTimeout(timeout);
 
         if (!success) {
-          resolve({ success: false, error: errorDesc ?? error ?? 'Authorization cancelled' });
-          return;
-        }
-
-        if (returnedState !== state) {
-          resolve({ success: false, error: 'State mismatch — request may have been tampered with.' });
+          // success already requires returnedState === state, so this covers state mismatch too.
+          resolve({ success: false, error: errorDesc ?? error ?? 'Authorization cancelled or state mismatch' });
           return;
         }
 

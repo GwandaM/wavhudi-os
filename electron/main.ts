@@ -125,6 +125,8 @@ function ensureOutlookService(): OutlookService {
   outlookService = new OutlookService(
     (key) => repos.appConfig.get(key),
     (key, value) => repos.appConfig.set(key, value),
+    (key) => repos.appConfig.getSecure(key),
+    (key, value) => repos.appConfig.setSecure(key, value),
   );
   return outlookService;
 }

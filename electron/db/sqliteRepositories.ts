@@ -1129,6 +1129,18 @@ export class SqliteAppConfigRepository {
       `)
       .run(key, value, now);
   }
+
+  // For sensitive values (e.g. OAuth tokens) — encrypted with Electron safeStorage.
+  // Falls back to plain text storage if encryption is unavailable.
+  getSecure(key: string): string | null {
+    const raw = this.get(key);
+    if (!raw) return null;
+    return decryptText(raw);
+  }
+
+  setSecure(key: string, value: string): void {
+    this.set(key, value ? encryptText(value) : '');
+  }
 }
 
 export class SqliteRepositoryBundle {

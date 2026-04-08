@@ -49,7 +49,12 @@ function unfold(text: string): string {
 /**
  * Validate that the content looks like a valid ICS file.
  */
+const ICS_MAX_BYTES = 10 * 1024 * 1024; // 10 MB
+
 export function validateIcsContent(content: string): { valid: boolean; error?: string } {
+  if (content.length > ICS_MAX_BYTES) {
+    return { valid: false, error: 'Calendar file is too large (max 10 MB)' };
+  }
   if (!content.includes('BEGIN:VCALENDAR')) {
     return { valid: false, error: 'Missing BEGIN:VCALENDAR' };
   }
