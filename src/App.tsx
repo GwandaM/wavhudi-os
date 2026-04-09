@@ -3,6 +3,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, HashRouter, Routes, Route } from "react-router-dom";
+import { ThemeProvider } from "next-themes";
 import { TitleBar } from "@/components/planner/TitleBar";
 import { FirstRunSetup } from "@/components/planner/FirstRunSetup";
 import { CalendarEventsProvider } from "@/contexts/CalendarEventsContext";
@@ -41,6 +42,7 @@ const App = () => {
   }
 
   return (
+    <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <CalendarEventsProvider>
@@ -57,6 +59,7 @@ const App = () => {
         </CalendarEventsProvider>
       </TooltipProvider>
     </QueryClientProvider>
+    </ThemeProvider>
   );
 };
 
