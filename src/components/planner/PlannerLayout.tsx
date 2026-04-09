@@ -38,6 +38,7 @@ import { cn } from '@/lib/utils';
 import { DatabaseService } from '@/services/DatabaseService';
 import { NotesView } from './NotesView';
 import { SidebarNotesSection } from './SidebarNotesSection';
+import { ThemeToggle } from './ThemeToggle';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 
 type ViewMode = 'myday' | 'timeline' | 'review';
@@ -404,6 +405,7 @@ export function PlannerLayout() {
             >
               <Search className="h-3.5 w-3.5" />
             </button>
+            <ThemeToggle />
           </div>
 
           {/* View Toggle */}
